@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f3efe5">
   <title>Pajó Agenda</title>
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
   <header class="topbar">
@@ -26,6 +26,7 @@
     <button class="tab" data-view="year">Ano</button>
     <button class="tab" data-view="planner">Planner</button>
     <button class="tab" data-view="organizer">Organizador</button>
+    <button class="tab" data-view="notebook">Caderno</button>
     <button class="tab" data-view="utilities">Utilidades</button>
   </nav>
 
@@ -260,6 +261,109 @@
       <div id="organizerMessage" class="utility-message" role="status" aria-live="polite"></div>
     </section>
 
+    <section id="notebookView" class="view">
+      <div class="notebook-hero">
+        <div>
+          <span class="eyebrow planner-eyebrow">PLANEAMENTO PESSOAL</span>
+          <h2>Caderno</h2>
+          <p>Objetivos, listas, refeições, notas e manutenções num só lugar.</p>
+        </div>
+        <span class="notebook-save">Guardado automaticamente neste browser</span>
+      </div>
+
+      <div class="notebook-grid">
+        <article class="organizer-card notebook-card goals-card">
+          <header>
+            <div><span class="organizer-kicker">VISÃO DO ANO</span><h3>Objetivos</h3></div>
+            <div class="habit-navigation">
+              <button id="prevGoalYear" type="button" aria-label="Ano anterior">‹</button>
+              <strong id="goalYearTitle"></strong>
+              <button id="nextGoalYear" type="button" aria-label="Ano seguinte">›</button>
+            </div>
+          </header>
+          <form id="goalForm" class="organizer-form notebook-form goal-form">
+            <label>Objetivo<input id="goalText" type="text" maxlength="120" placeholder="Ex.: Melhorar a saúde" required></label>
+            <label>Categoria<select id="goalCategory"></select></label>
+            <button type="submit">+ Adicionar</button>
+          </form>
+          <div id="goalList" class="organizer-list"></div>
+        </article>
+
+        <article class="organizer-card notebook-card monthly-plan-card">
+          <header>
+            <div><span class="organizer-kicker">FOCO DO MÊS</span><h3>Plano mensal</h3></div>
+            <div class="habit-navigation">
+              <button id="prevPlanMonth" type="button" aria-label="Mês anterior">‹</button>
+              <strong id="planMonthTitle"></strong>
+              <button id="nextPlanMonth" type="button" aria-label="Mês seguinte">›</button>
+            </div>
+          </header>
+          <div class="monthly-plan-fields">
+            <label>Prioridades<textarea id="monthlyPriorities" placeholder="As três coisas mais importantes…"></textarea></label>
+            <label>Objetivos do mês<textarea id="monthlyGoals" placeholder="O que quero alcançar…"></textarea></label>
+            <label>Notas<textarea id="monthlyNotes" placeholder="Ideias e lembretes…"></textarea></label>
+          </div>
+        </article>
+
+        <article class="organizer-card notebook-card checklists-card">
+          <header>
+            <div><span class="organizer-kicker">LISTAS REUTILIZÁVEIS</span><h3>Checklists</h3></div>
+            <span>Compras, viagens, documentos ou qualquer rotina</span>
+          </header>
+          <form id="checklistForm" class="organizer-form notebook-form checklist-form">
+            <label>Nome da nova lista<input id="checklistTitle" type="text" maxlength="70" placeholder="Ex.: Preparar viagem" required></label>
+            <button type="submit">+ Criar lista</button>
+          </form>
+          <div id="checklistGrid" class="checklist-grid"></div>
+        </article>
+
+        <article class="organizer-card notebook-card free-notes-card">
+          <header>
+            <div><span class="organizer-kicker">PÁGINAS LIVRES</span><h3>Notas livres</h3></div>
+            <span>Independentes das notas diárias</span>
+          </header>
+          <form id="freeNoteForm" class="organizer-form notebook-form free-note-form">
+            <label>Título<input id="freeNoteTitle" type="text" maxlength="80" required></label>
+            <label>Categoria<select id="freeNoteCategory"></select></label>
+            <label class="free-note-body">Nota<textarea id="freeNoteBody" maxlength="3000" placeholder="Escreve aqui…" required></textarea></label>
+            <button type="submit">+ Guardar nota</button>
+          </form>
+          <div id="freeNoteList" class="free-note-list"></div>
+        </article>
+
+        <article class="organizer-card notebook-card maintenance-card">
+          <header>
+            <div><span class="organizer-kicker">LEMBRETES</span><h3>Casa e carro</h3></div>
+            <span>Manutenção e renovações</span>
+          </header>
+          <form id="maintenanceForm" class="organizer-form notebook-form maintenance-form">
+            <label>Descrição<input id="maintenanceTitle" type="text" maxlength="100" placeholder="Ex.: MOT do carro" required></label>
+            <label>Área<select id="maintenanceArea"><option value="car">Carro</option><option value="home">Casa</option><option value="documents">Documentos</option></select></label>
+            <label>Próxima data<input id="maintenanceDate" type="date" required></label>
+            <label>Repetição<select id="maintenanceRepeat"><option value="none">Não repetir</option><option value="monthly">Todos os meses</option><option value="yearly">Todos os anos</option></select></label>
+            <button type="submit">+ Adicionar</button>
+          </form>
+          <div id="maintenanceList" class="organizer-list"></div>
+        </article>
+
+        <article class="organizer-card notebook-card meals-card">
+          <header>
+            <div><span class="organizer-kicker">PLANO SEMANAL</span><h3>Refeições e compras</h3></div>
+            <div class="habit-navigation meal-navigation">
+              <button id="prevMealWeek" type="button" aria-label="Semana anterior">‹</button>
+              <strong id="mealWeekTitle"></strong>
+              <button id="nextMealWeek" type="button" aria-label="Semana seguinte">›</button>
+            </div>
+          </header>
+          <div class="meal-planner-layout">
+            <div id="mealPlan" class="meal-plan"></div>
+            <label class="shopping-list">Lista de compras<textarea id="shoppingList" placeholder="Um item por linha…"></textarea></label>
+          </div>
+        </article>
+      </div>
+      <div id="notebookMessage" class="utility-message" role="status" aria-live="polite"></div>
+    </section>
+
     <section id="utilitiesView" class="view">
       <div class="utilities-hero">
         <div>
@@ -319,6 +423,6 @@
   </dialog>
 
   <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
