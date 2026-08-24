@@ -15,6 +15,8 @@ let monthCursor = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
 let yearCursor = selected.getFullYear();
 let plannerCursor = selected.getFullYear();
 let utilitiesInitialized = false;
+let organizerInitialized = false;
+let habitCursor = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
 
 function startOfWeek(date) {
   const offset = (date.getDay() + 6) % 7;
@@ -26,14 +28,45 @@ let mobileWeekDayIndex = (selected.getDay() + 6) % 7;
 
 const KEY = 'pajo-agenda-v1';
 const PERIOD_KEY = 'pajo-agenda-periods-v1';
+const ORGANIZER_KEY = 'pajo-agenda-organizer-v1';
+const UK_HOLIDAY_CACHE_KEY = 'pajo-agenda-uk-holidays-v1';
 let db = JSON.parse(localStorage.getItem(KEY) || '{}');
 let periods = JSON.parse(localStorage.getItem(PERIOD_KEY) || '[]');
+
+function readStoredObject(storageKey, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(storageKey) || 'null');
+    return value && typeof value === 'object' ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+let organizer = readStoredObject(ORGANIZER_KEY, {});
+organizer.settings ??= {holidays: 'both'};
+organizer.settings.holidays ??= 'both';
+organizer.specialDates ??= [];
+organizer.masterTasks ??= [];
+organizer.habits ??= [];
+organizer.habitChecks ??= {};
+organizer.contacts ??= [];
+organizer.information ??= [];
+
+let ukHolidayCache = readStoredObject(UK_HOLIDAY_CACHE_KEY, {events: [], updatedAt: ''});
 
 const PERIOD_TYPES = {
   holiday: {label: 'Férias', color: '#2f7d5c'},
   work: {label: 'Trabalho', color: '#315d8c'},
   health: {label: 'Saúde', color: '#9a5e78'},
   personal: {label: 'Pessoal', color: '#b66d32'}
+};
+
+const ORGANIZER_CATEGORIES = {
+  personal: {label: 'Pessoal', color: '#a96535'},
+  family: {label: 'Família', color: '#8d4f74'},
+  work: {label: 'Trabalho', color: '#315d8c'},
+  health: {label: 'Saúde', color: '#2f7d5c'},
+  finance: {label: 'Pagamentos', color: '#8a6b20'}
 };
 
 const CURRENCY_CACHE_KEY = 'pajo-agenda-currency-v1';
@@ -182,6 +215,24 @@ function savePeriods() {
   localStorage.setItem(PERIOD_KEY, JSON.stringify(periods));
 }
 
+function saveOrganizer() {
+  localStorage.setItem(ORGANIZER_KEY, JSON.stringify(organizer));
+}
+
+function createId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function categoryDetails(category) {
+  return ORGANIZER_CATEGORIES[category] || ORGANIZER_CATEGORIES.personal;
+}
+
+function categoryOptions(selectedCategory = 'personal') {
+  return Object.entries(ORGANIZER_CATEGORIES)
+    .map(([id, details]) => `<option value="${id}"${id === selectedCategory ? ' selected' : ''}>${details.label}</option>`)
+    .join('');
+}
+
 function fromIso(value) {
   const [year, month, day] = value.split('-').map(Number);
   return new Date(year, month - 1, day, 12);
@@ -227,6 +278,170 @@ function escapeHtml(value) {
     .replaceAll('"', '&quot;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;');
+}
+
+function addCalendarDays(date, amount) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount, 12);
+}
+
+function easterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day, 12);
+}
+
+function firstWeekdayOfMonth(year, month, weekday) {
+  const date = new Date(year, month, 1, 12);
+  return new Date(year, month, 1 + (weekday - date.getDay() + 7) % 7, 12);
+}
+
+function lastWeekdayOfMonth(year, month, weekday) {
+  const date = new Date(year, month + 1, 0, 12);
+  return new Date(year, month, date.getDate() - (date.getDay() - weekday + 7) % 7, 12);
+}
+
+function translatedUkHoliday(title) {
+  const substitute = title.includes('(substitute day)');
+  const clean = title.replace(' (substitute day)', '');
+  const translations = {
+    "New Year’s Day": 'Dia de Ano Novo',
+    "New Year's Day": 'Dia de Ano Novo',
+    'Good Friday': 'Sexta-feira Santa',
+    'Easter Monday': 'Segunda-feira de Páscoa',
+    'Early May bank holiday': 'Feriado bancário de maio',
+    'Spring bank holiday': 'Feriado da primavera',
+    'Summer bank holiday': 'Feriado de verão',
+    'Christmas Day': 'Dia de Natal',
+    'Boxing Day': 'Boxing Day'
+  };
+  return `${translations[clean] || clean}${substitute ? ' (substituição)' : ''}`;
+}
+
+function fallbackUkHolidays(year) {
+  const easter = easterSunday(year);
+  const holidays = [];
+  const add = (date, title) => holidays.push({date: key(date), title, country: 'UK'});
+  const newYear = new Date(year, 0, 1, 12);
+  add(newYear.getDay() === 6 ? new Date(year, 0, 3, 12) : newYear.getDay() === 0 ? new Date(year, 0, 2, 12) : newYear, 'Dia de Ano Novo');
+  add(addCalendarDays(easter, -2), 'Sexta-feira Santa');
+  add(addCalendarDays(easter, 1), 'Segunda-feira de Páscoa');
+  add(firstWeekdayOfMonth(year, 4, 1), 'Feriado bancário de maio');
+  add(lastWeekdayOfMonth(year, 4, 1), 'Feriado da primavera');
+  add(lastWeekdayOfMonth(year, 7, 1), 'Feriado de verão');
+
+  const christmasDay = new Date(year, 11, 25, 12).getDay();
+  if (christmasDay === 6) {
+    add(new Date(year, 11, 27, 12), 'Dia de Natal (substituição)');
+    add(new Date(year, 11, 28, 12), 'Boxing Day (substituição)');
+  } else if (christmasDay === 0) {
+    add(new Date(year, 11, 26, 12), 'Boxing Day');
+    add(new Date(year, 11, 27, 12), 'Dia de Natal (substituição)');
+  } else {
+    add(new Date(year, 11, 25, 12), 'Dia de Natal');
+    const boxing = new Date(year, 11, 26, 12);
+    add(boxing.getDay() === 6 ? new Date(year, 11, 28, 12) : boxing, boxing.getDay() === 6 ? 'Boxing Day (substituição)' : 'Boxing Day');
+  }
+  return holidays;
+}
+
+function ukHolidaysForYear(year) {
+  const official = (ukHolidayCache.events || [])
+    .filter(event => Number(event.date?.slice(0, 4)) === year)
+    .map(event => ({date: event.date, title: translatedUkHoliday(event.title), country: 'UK'}));
+  return official.length ? official : fallbackUkHolidays(year);
+}
+
+function portugalHolidaysForYear(year) {
+  const easter = easterSunday(year);
+  const holidays = [
+    [new Date(year, 0, 1, 12), 'Dia de Ano Novo'],
+    [addCalendarDays(easter, -2), 'Sexta-feira Santa'],
+    [easter, 'Domingo de Páscoa'],
+    [new Date(year, 3, 25, 12), 'Dia da Liberdade'],
+    [new Date(year, 4, 1, 12), 'Dia do Trabalhador'],
+    [addCalendarDays(easter, 60), 'Corpo de Deus'],
+    [new Date(year, 5, 10, 12), 'Dia de Portugal'],
+    [new Date(year, 7, 15, 12), 'Assunção de Nossa Senhora'],
+    [new Date(year, 9, 5, 12), 'Implantação da República'],
+    [new Date(year, 10, 1, 12), 'Dia de Todos os Santos'],
+    [new Date(year, 11, 1, 12), 'Restauração da Independência'],
+    [new Date(year, 11, 8, 12), 'Imaculada Conceição'],
+    [new Date(year, 11, 25, 12), 'Dia de Natal']
+  ];
+  return holidays.map(([date, title]) => ({date: key(date), title, country: 'PT'}));
+}
+
+function holidaysForDate(date) {
+  const setting = organizer.settings.holidays;
+  if (setting === 'none') return [];
+  const dateKey = key(date);
+  const events = [];
+  if (setting === 'both' || setting === 'uk') events.push(...ukHolidaysForYear(date.getFullYear()));
+  if (setting === 'both' || setting === 'pt') events.push(...portugalHolidaysForYear(date.getFullYear()));
+  return events.filter(event => event.date === dateKey);
+}
+
+function specialDatesForDate(date) {
+  const dateKey = key(date);
+  const monthDay = dateKey.slice(5);
+  return organizer.specialDates.filter(item => (
+    item.repeat === 'yearly' ? item.date?.slice(5) === monthDay : item.date === dateKey
+  ));
+}
+
+function masterTasksForDate(date) {
+  const dateKey = key(date);
+  return organizer.masterTasks.filter(task => task.date === dateKey);
+}
+
+function calendarEventsForDate(date) {
+  const holidayEvents = holidaysForDate(date).map(event => ({
+    ...event, kind: 'holiday', color: event.country === 'UK' ? '#315d8c' : '#2f7d5c', label: `${event.country} · ${event.title}`
+  }));
+  const importantEvents = specialDatesForDate(date).map(item => ({
+    ...item, kind: 'important', color: categoryDetails(item.category).color, label: item.title
+  }));
+  const taskEvents = masterTasksForDate(date).map(item => ({
+    ...item, kind: 'master-task', color: categoryDetails(item.category).color, label: `${item.done ? '✓ ' : ''}${item.text}`
+  }));
+  return [...importantEvents, ...taskEvents, ...holidayEvents];
+}
+
+function refreshVisibleCalendar() {
+  const active = document.querySelector('.view.active')?.id;
+  if (active === 'dayView') renderDay();
+  if (active === 'weekView') renderWeek();
+  if (active === 'monthView') renderMonth();
+  if (active === 'yearView') renderYear();
+  if (active === 'plannerView') renderPlanner();
+}
+
+async function refreshUkHolidays() {
+  try {
+    const response = await fetch('https://www.gov.uk/bank-holidays.json');
+    if (!response.ok) throw new Error('holiday request failed');
+    const data = await response.json();
+    const events = data['england-and-wales']?.events;
+    if (!Array.isArray(events)) throw new Error('invalid holiday data');
+    ukHolidayCache = {events, updatedAt: new Date().toISOString()};
+    localStorage.setItem(UK_HOLIDAY_CACHE_KEY, JSON.stringify(ukHolidayCache));
+    if ($('#holidayStatus')) $('#holidayStatus').textContent = 'Feriados oficiais de England & Wales atualizados · Portugal calculado localmente';
+    refreshVisibleCalendar();
+  } catch {
+    if ($('#holidayStatus')) $('#holidayStatus').textContent = 'Sem ligação: a usar os feriados guardados ou calculados';
+  }
 }
 
 function openDay(date) {
@@ -324,6 +539,18 @@ function renderDayPeriods(date) {
     badge.innerHTML = `<strong>${escapeHtml(period.title)}</strong><span>${formatPeriodDate(period.start)} — ${formatPeriodDate(period.end)}</span>`;
     root.appendChild(badge);
   });
+  calendarEventsForDate(date).forEach(event => {
+    const badge = document.createElement('div');
+    badge.className = `day-event-badge ${event.kind}`;
+    badge.style.setProperty('--event-color', event.color);
+    const detail = event.kind === 'holiday'
+      ? 'Feriado'
+      : event.kind === 'master-task'
+        ? `${categoryDetails(event.category).label} · tarefa geral`
+        : `${categoryDetails(event.category).label} · ${event.repeat === 'yearly' ? 'repete todos os anos' : 'data importante'}`;
+    badge.innerHTML = `<strong>${escapeHtml(event.label)}</strong><span>${escapeHtml(detail)}</span>`;
+    root.appendChild(badge);
+  });
 }
 
 $('#addTask').onclick = () => {
@@ -393,6 +620,7 @@ function show(name) {
   if (name === 'month') renderMonth();
   if (name === 'year') renderYear();
   if (name === 'planner') renderPlanner();
+  if (name === 'organizer') renderOrganizer();
   if (name === 'utilities') renderUtilities();
 }
 
@@ -474,22 +702,33 @@ function createWeekPeriodCell(date, index) {
   const cell = document.createElement('div');
   const datePeriods = periodsForDate(date);
   const mainPeriod = datePeriods[0];
+  const dateEvents = calendarEventsForDate(date);
   cell.className = 'week-period-cell';
-  if (!mainPeriod) return cell;
+  if (!mainPeriod && !dateEvents.length) return cell;
 
-  const type = PERIOD_TYPES[mainPeriod.type] || PERIOD_TYPES.personal;
-  const startsHere = mainPeriod.start === key(date) || index === 0;
-  const endsHere = mainPeriod.end === key(date) || index === 6;
-  cell.classList.add('has-period');
-  if (startsHere) cell.classList.add('period-start');
-  if (endsHere) cell.classList.add('period-end');
-  cell.style.setProperty('--period-color', type.color);
-  cell.title = datePeriods.map(period => period.title).join(', ');
-  if (startsHere) {
+  if (mainPeriod) {
+    const type = PERIOD_TYPES[mainPeriod.type] || PERIOD_TYPES.personal;
+    const startsHere = mainPeriod.start === key(date) || index === 0;
+    const endsHere = mainPeriod.end === key(date) || index === 6;
+    cell.classList.add('has-period');
+    if (startsHere) cell.classList.add('period-start');
+    if (endsHere) cell.classList.add('period-end');
+    cell.style.setProperty('--period-color', type.color);
+    if (startsHere) {
+      const label = document.createElement('span');
+      label.textContent = mainPeriod.title;
+      cell.appendChild(label);
+    }
+  }
+  if (dateEvents.length) {
+    cell.classList.add('has-event');
+    cell.style.setProperty('--event-color', dateEvents[0].color);
     const label = document.createElement('span');
-    label.textContent = mainPeriod.title;
+    label.className = 'week-event-label';
+    label.textContent = `${dateEvents[0].label}${dateEvents.length > 1 ? ` +${dateEvents.length - 1}` : ''}`;
     cell.appendChild(label);
   }
+  cell.title = [...datePeriods.map(period => period.title), ...dateEvents.map(event => event.label)].join(', ');
   return cell;
 }
 
@@ -578,7 +817,8 @@ function renderWeekMobile(start, dates) {
   panel.appendChild(createWeekHeader(date, 'week-mobile-head'));
 
   const datePeriods = periodsForDate(date);
-  if (datePeriods.length) {
+  const dateEvents = calendarEventsForDate(date);
+  if (datePeriods.length || dateEvents.length) {
     const periodRoot = document.createElement('div');
     periodRoot.className = 'week-mobile-periods';
     datePeriods.forEach(period => {
@@ -586,6 +826,13 @@ function renderWeekMobile(start, dates) {
       const badge = document.createElement('div');
       badge.style.setProperty('--period-color', type.color);
       badge.textContent = period.title;
+      periodRoot.appendChild(badge);
+    });
+    dateEvents.forEach(event => {
+      const badge = document.createElement('div');
+      badge.className = 'week-mobile-event';
+      badge.style.setProperty('--period-color', event.color);
+      badge.textContent = event.label;
       periodRoot.appendChild(badge);
     });
     panel.appendChild(periodRoot);
@@ -654,13 +901,18 @@ function renderMonth() {
     const date = new Date(year, month, 1 - offset + index, 12);
     const datePeriods = periodsForDate(date);
     const mainPeriod = datePeriods[0];
+    const dateEvents = calendarEventsForDate(date);
     const cell = document.createElement('div');
-    cell.className = `day-cell${date.getMonth() !== month ? ' other' : ''}${sameDay(date, new Date()) ? ' today' : ''}${mainPeriod ? ' has-period' : ''}`;
+    cell.className = `day-cell${date.getMonth() !== month ? ' other' : ''}${sameDay(date, new Date()) ? ' today' : ''}${mainPeriod ? ' has-period' : ''}${dateEvents.length ? ' has-event' : ''}`;
     if (mainPeriod) {
       const type = PERIOD_TYPES[mainPeriod.type] || PERIOD_TYPES.personal;
       cell.style.setProperty('--period-color', type.color);
     }
-    cell.innerHTML = `<span class="num">${date.getDate()}</span>${datePeriods.map(period => `<div class="month-period">${escapeHtml(period.title)}</div>`).join('')}${hasData(date) ? '<div class="marks">• com registos</div>' : ''}`;
+    if (dateEvents.length) cell.style.setProperty('--event-color', dateEvents[0].color);
+    const shownEvents = dateEvents.slice(0, 2);
+    const eventHtml = shownEvents.map(event => `<div class="month-event" style="--event-color:${event.color}">${escapeHtml(event.label)}</div>`).join('');
+    const extraEvents = dateEvents.length > 2 ? `<div class="month-event-more">+${dateEvents.length - 2}</div>` : '';
+    cell.innerHTML = `<span class="num">${date.getDate()}</span>${datePeriods.map(period => `<div class="month-period">${escapeHtml(period.title)}</div>`).join('')}${eventHtml}${extraEvents}${hasData(date) ? '<div class="marks">• com registos</div>' : ''}`;
     cell.onclick = () => openDay(date);
     root.appendChild(cell);
   }
@@ -693,7 +945,7 @@ function renderYear() {
     for (let index = 0; index < offset; index += 1) html += '<span class="muted">·</span>';
     for (let day = 1; day <= days; day += 1) {
       const date = new Date(yearCursor, month, day, 12);
-      html += `<span class="${hasData(date) || periodsForDate(date).length ? 'has' : ''}">${day}</span>`;
+      html += `<span class="${hasData(date) || periodsForDate(date).length || calendarEventsForDate(date).length ? 'has' : ''}">${day}</span>`;
     }
     html += '</div>';
 
@@ -813,6 +1065,7 @@ function renderPlanner() {
       const hasNotes = Boolean(data?.notes?.trim());
       const datePeriods = periodsForDate(date);
       const mainPeriod = datePeriods[0];
+      const dateEvents = calendarEventsForDate(date);
       const weekend = date.getDay() === 0 || date.getDay() === 6;
       const isToday = sameDay(date, today);
 
@@ -822,6 +1075,7 @@ function renderPlanner() {
         hasTasks ? 'has-tasks' : '',
         hasNotes ? 'has-notes' : '',
         mainPeriod ? 'has-period' : '',
+        dateEvents.length ? 'has-event' : '',
         mainPeriod?.start === key(date) ? 'period-start' : '',
         mainPeriod?.end === key(date) ? 'period-end' : '',
         isToday ? 'is-today' : ''
@@ -830,8 +1084,10 @@ function renderPlanner() {
         const periodType = PERIOD_TYPES[mainPeriod.type] || PERIOD_TYPES.personal;
         button.style.setProperty('--period-color', periodType.color);
       }
+      if (dateEvents.length) button.style.setProperty('--event-color', dateEvents[0].color);
       const rangeNames = datePeriods.map(period => period.title).join(', ');
-      button.title = `${plannerCellTitle(date, data)}${rangeNames ? ` — ${rangeNames}` : ''}`;
+      const eventNames = dateEvents.map(event => event.label).join(', ');
+      button.title = `${plannerCellTitle(date, data)}${rangeNames ? ` — ${rangeNames}` : ''}${eventNames ? ` — ${eventNames}` : ''}`;
       button.setAttribute('aria-label', button.title);
       button.onclick = () => openDay(date);
       cell.appendChild(button);
@@ -852,6 +1108,486 @@ $('#nextPlannerYear').onclick = () => {
   plannerCursor += 1;
   renderPlanner();
 };
+
+function showOrganizerMessage(message) {
+  const root = $('#organizerMessage');
+  root.textContent = message;
+  clearTimeout(showOrganizerMessage.timer);
+  showOrganizerMessage.timer = setTimeout(() => { root.textContent = ''; }, 2600);
+}
+
+function formatOrganizerDate(value, yearly = false) {
+  const date = fromIso(value);
+  return new Intl.DateTimeFormat('pt-PT', yearly
+    ? {day: 'numeric', month: 'long'}
+    : {day: 'numeric', month: 'short', year: 'numeric'}
+  ).format(date);
+}
+
+function createEmptyOrganizerMessage(text) {
+  const empty = document.createElement('p');
+  empty.className = 'organizer-empty';
+  empty.textContent = text;
+  return empty;
+}
+
+function createCategoryTag(category) {
+  const details = categoryDetails(category);
+  const tag = document.createElement('span');
+  tag.className = 'category-tag';
+  tag.style.setProperty('--category-color', details.color);
+  tag.textContent = details.label;
+  return tag;
+}
+
+function renderImportantDates() {
+  const root = $('#importantDateList');
+  root.innerHTML = '';
+  const items = [...organizer.specialDates].sort((a, b) => (
+    (a.repeat === 'yearly' ? a.date.slice(5) : a.date).localeCompare(b.repeat === 'yearly' ? b.date.slice(5) : b.date)
+  ));
+  if (!items.length) {
+    root.appendChild(createEmptyOrganizerMessage('Ainda não existem datas importantes.'));
+    return;
+  }
+
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'organizer-list-item';
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'organizer-item-main';
+    main.innerHTML = `<strong>${escapeHtml(item.title)}</strong><span>${formatOrganizerDate(item.date, item.repeat === 'yearly')} · ${item.repeat === 'yearly' ? 'todos os anos' : 'uma vez'}</span>`;
+    main.prepend(createCategoryTag(item.category));
+    main.onclick = () => {
+      const saved = fromIso(item.date);
+      const date = item.repeat === 'yearly'
+        ? new Date(selected.getFullYear(), saved.getMonth(), saved.getDate(), 12)
+        : saved;
+      openDay(date);
+    };
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'organizer-delete';
+    remove.setAttribute('aria-label', `Apagar ${item.title}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      if (!window.confirm(`Apagar a data “${item.title}”?`)) return;
+      organizer.specialDates = organizer.specialDates.filter(saved => saved.id !== item.id);
+      saveOrganizer();
+      renderImportantDates();
+      showOrganizerMessage('Data apagada.');
+    };
+    row.append(main, remove);
+    root.appendChild(row);
+  });
+}
+
+function renderMasterTasks() {
+  const root = $('#masterTaskList');
+  root.innerHTML = '';
+  const items = [...organizer.masterTasks].sort((a, b) => (
+    Number(a.done) - Number(b.done) || (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99')
+  ));
+  if (!items.length) {
+    root.appendChild(createEmptyOrganizerMessage('A lista geral está vazia.'));
+    return;
+  }
+
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = `organizer-list-item master-task-item${item.done ? ' done' : ''}`;
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = Boolean(item.done);
+    check.setAttribute('aria-label', `Concluir ${item.text}`);
+    check.onchange = () => {
+      item.done = check.checked;
+      saveOrganizer();
+      renderMasterTasks();
+    };
+    const main = document.createElement(item.date ? 'button' : 'div');
+    if (item.date) main.type = 'button';
+    main.className = 'organizer-item-main';
+    main.innerHTML = `<strong>${escapeHtml(item.text)}</strong><span>${item.date ? formatOrganizerDate(item.date) : 'Sem data marcada'}</span>`;
+    main.prepend(createCategoryTag(item.category));
+    if (item.date) main.onclick = () => openDay(fromIso(item.date));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'organizer-delete';
+    remove.setAttribute('aria-label', `Apagar ${item.text}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      if (!window.confirm(`Apagar a tarefa “${item.text}”?`)) return;
+      organizer.masterTasks = organizer.masterTasks.filter(saved => saved.id !== item.id);
+      saveOrganizer();
+      renderMasterTasks();
+      showOrganizerMessage('Tarefa apagada.');
+    };
+    row.append(check, main, remove);
+    root.appendChild(row);
+  });
+}
+
+function renderHabitTracker() {
+  const root = $('#habitTracker');
+  const year = habitCursor.getFullYear();
+  const month = habitCursor.getMonth();
+  const days = new Date(year, month + 1, 0).getDate();
+  $('#habitMonthTitle').textContent = `${MONTHS[month]} ${year}`;
+  root.innerHTML = '';
+  if (!organizer.habits.length) {
+    root.appendChild(createEmptyOrganizerMessage('Adiciona um hábito para começar o acompanhamento mensal.'));
+    return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'habit-table-wrap';
+  const table = document.createElement('table');
+  table.className = 'habit-table';
+  const head = document.createElement('tr');
+  head.innerHTML = '<th scope="col">Hábito</th>';
+  for (let day = 1; day <= days; day += 1) {
+    const date = new Date(year, month, day, 12);
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.className = date.getDay() === 0 || date.getDay() === 6 ? 'weekend' : '';
+    th.innerHTML = `<span>${day}</span><small>${WEEK_SHORT[date.getDay()].slice(0, 1)}</small>`;
+    head.appendChild(th);
+  }
+  const thead = document.createElement('thead');
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  organizer.habits.forEach(habit => {
+    const row = document.createElement('tr');
+    const label = document.createElement('th');
+    label.scope = 'row';
+    label.style.setProperty('--category-color', categoryDetails(habit.category).color);
+    label.innerHTML = `<span>${escapeHtml(habit.name)}</span><button type="button" aria-label="Apagar ${escapeHtml(habit.name)}">×</button>`;
+    label.querySelector('button').onclick = () => {
+      if (!window.confirm(`Apagar o hábito “${habit.name}” e o respetivo histórico?`)) return;
+      organizer.habits = organizer.habits.filter(saved => saved.id !== habit.id);
+      Object.keys(organizer.habitChecks).forEach(checkKey => {
+        if (checkKey.startsWith(`${habit.id}|`)) delete organizer.habitChecks[checkKey];
+      });
+      saveOrganizer();
+      renderHabitTracker();
+    };
+    row.appendChild(label);
+    for (let day = 1; day <= days; day += 1) {
+      const date = new Date(year, month, day, 12);
+      const checkKey = `${habit.id}|${key(date)}`;
+      const cell = document.createElement('td');
+      if (date.getDay() === 0 || date.getDay() === 6) cell.className = 'weekend';
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = Boolean(organizer.habitChecks[checkKey]);
+      check.setAttribute('aria-label', `${habit.name}, ${day} de ${MONTHS[month]}`);
+      check.onchange = () => {
+        if (check.checked) organizer.habitChecks[checkKey] = true;
+        else delete organizer.habitChecks[checkKey];
+        saveOrganizer();
+      };
+      cell.appendChild(check);
+      row.appendChild(cell);
+    }
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  root.appendChild(wrap);
+}
+
+function renderContacts() {
+  const root = $('#contactList');
+  root.innerHTML = '';
+  const contacts = [...organizer.contacts].sort((a, b) => Number(b.emergency) - Number(a.emergency) || a.name.localeCompare(b.name, 'pt'));
+  if (!contacts.length) {
+    root.appendChild(createEmptyOrganizerMessage('Ainda não existem contactos guardados.'));
+    return;
+  }
+  contacts.forEach(contact => {
+    const row = document.createElement('div');
+    row.className = `organizer-list-item contact-item${contact.emergency ? ' emergency' : ''}`;
+    const content = document.createElement('div');
+    content.className = 'contact-content';
+    const links = [];
+    if (contact.phone) links.push(`<a href="tel:${escapeHtml(contact.phone)}">${escapeHtml(contact.phone)}</a>`);
+    if (contact.email) links.push(`<a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a>`);
+    content.innerHTML = `<strong>${contact.emergency ? 'Emergência · ' : ''}${escapeHtml(contact.name)}</strong><span>${links.join(' · ') || 'Sem telefone ou email'}</span>${contact.notes ? `<small>${escapeHtml(contact.notes)}</small>` : ''}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'organizer-delete';
+    remove.setAttribute('aria-label', `Apagar ${contact.name}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      if (!window.confirm(`Apagar o contacto “${contact.name}”?`)) return;
+      organizer.contacts = organizer.contacts.filter(saved => saved.id !== contact.id);
+      saveOrganizer();
+      renderContacts();
+    };
+    row.append(content, remove);
+    root.appendChild(row);
+  });
+}
+
+function renderInformation() {
+  const root = $('#informationList');
+  root.innerHTML = '';
+  if (!organizer.information.length) {
+    root.appendChild(createEmptyOrganizerMessage('Ainda não existem informações guardadas.'));
+    return;
+  }
+  organizer.information.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'organizer-list-item information-item';
+    const content = document.createElement('div');
+    content.className = 'information-content';
+    content.innerHTML = `<strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.value)}</span>`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'organizer-delete';
+    remove.setAttribute('aria-label', `Apagar ${item.label}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      if (!window.confirm(`Apagar “${item.label}”?`)) return;
+      organizer.information = organizer.information.filter(saved => saved.id !== item.id);
+      saveOrganizer();
+      renderInformation();
+    };
+    row.append(content, remove);
+    root.appendChild(row);
+  });
+}
+
+function searchableText(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function searchAgenda(query) {
+  const needle = searchableText(query.trim());
+  if (!needle) return [];
+  const results = [];
+  const add = (type, title, detail, date = '') => results.push({type, title, detail, date});
+
+  Object.entries(db).forEach(([date, data]) => {
+    (data.tasks || []).forEach(task => {
+      if (searchableText(task.text).includes(needle)) add('Tarefa diária', task.text, date, date);
+    });
+    Object.entries(data.schedule || {}).forEach(([hour, text]) => {
+      if (searchableText(text).includes(needle)) add('Agenda do dia', text, `${date} · ${String(hour).padStart(2, '0')}:00`, date);
+    });
+    if (searchableText(data.notes).includes(needle)) add('Notas', data.notes.trim().slice(0, 110), date, date);
+  });
+  periods.forEach(period => {
+    if (searchableText(period.title).includes(needle)) add('Período', period.title, `${period.start} — ${period.end}`, period.start);
+  });
+  organizer.specialDates.forEach(item => {
+    if (searchableText(item.title).includes(needle)) add('Data importante', item.title, formatOrganizerDate(item.date, item.repeat === 'yearly'), item.date);
+  });
+  organizer.masterTasks.forEach(item => {
+    if (searchableText(item.text).includes(needle)) add('Tarefa geral', item.text, item.date || 'Sem data', item.date);
+  });
+  organizer.contacts.forEach(contact => {
+    if (searchableText([contact.name, contact.phone, contact.email, contact.notes].join(' ')).includes(needle)) {
+      add('Contacto', contact.name, [contact.phone, contact.email, contact.notes].filter(Boolean).join(' · '));
+    }
+  });
+  organizer.information.forEach(item => {
+    if (searchableText(`${item.label} ${item.value}`).includes(needle)) add('Informação', item.label, item.value);
+  });
+  return results.slice(0, 100);
+}
+
+function renderSearchResults() {
+  const root = $('#searchResults');
+  const query = $('#globalSearch').value;
+  if (!query.trim()) {
+    root.hidden = true;
+    root.innerHTML = '';
+    return;
+  }
+  const results = searchAgenda(query);
+  root.hidden = false;
+  root.innerHTML = `<div class="search-results-head"><strong>${results.length} resultado${results.length === 1 ? '' : 's'}</strong><button type="button">Fechar</button></div>`;
+  root.querySelector('button').onclick = () => {
+    $('#globalSearch').value = '';
+    renderSearchResults();
+  };
+  if (!results.length) {
+    root.appendChild(createEmptyOrganizerMessage('Nada encontrado.'));
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'search-results-list';
+  results.forEach(result => {
+    const item = document.createElement(result.date ? 'button' : 'div');
+    if (result.date) item.type = 'button';
+    item.className = 'search-result-item';
+    item.innerHTML = `<span>${escapeHtml(result.type)}</span><strong>${escapeHtml(result.title)}</strong><small>${escapeHtml(result.detail)}</small>`;
+    if (result.date) item.onclick = () => openDay(fromIso(result.date));
+    list.appendChild(item);
+  });
+  root.appendChild(list);
+}
+
+function exportAgendaBackup() {
+  const payload = {
+    app: 'Pajó Agenda',
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    db,
+    periods,
+    organizer,
+    currencyCache: readCurrencyCache(),
+    ukHolidayCache
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `pajo-agenda-backup-${key(new Date())}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showOrganizerMessage('Cópia de segurança exportada.');
+}
+
+async function importAgendaBackup(file) {
+  try {
+    const payload = JSON.parse(await file.text());
+    if (payload.app !== 'Pajó Agenda' || !payload.db || !Array.isArray(payload.periods) || !payload.organizer) {
+      throw new Error('invalid backup');
+    }
+    if (!window.confirm('Importar esta cópia vai substituir os dados atuais da Agenda. Continuar?')) return;
+    db = payload.db;
+    periods = payload.periods;
+    organizer = payload.organizer;
+    organizer.settings ??= {holidays: 'both'};
+    organizer.settings.holidays ??= 'both';
+    organizer.specialDates ??= [];
+    organizer.masterTasks ??= [];
+    organizer.habits ??= [];
+    organizer.habitChecks ??= {};
+    organizer.contacts ??= [];
+    organizer.information ??= [];
+    ukHolidayCache = payload.ukHolidayCache || ukHolidayCache;
+    localStorage.setItem(KEY, JSON.stringify(db));
+    localStorage.setItem(PERIOD_KEY, JSON.stringify(periods));
+    saveOrganizer();
+    localStorage.setItem(UK_HOLIDAY_CACHE_KEY, JSON.stringify(ukHolidayCache));
+    if (payload.currencyCache) localStorage.setItem(CURRENCY_CACHE_KEY, JSON.stringify(payload.currencyCache));
+    renderOrganizer();
+    showOrganizerMessage('Cópia importada com sucesso.');
+  } catch {
+    showOrganizerMessage('Este ficheiro não é uma cópia válida da Pajó Agenda.');
+  } finally {
+    $('#backupFile').value = '';
+  }
+}
+
+function initializeOrganizer() {
+  if (organizerInitialized) return;
+  ['importantDateCategory', 'masterTaskCategory', 'habitCategory'].forEach(id => {
+    $(`#${id}`).innerHTML = categoryOptions();
+  });
+  $('#importantDateValue').value = key(selected);
+  $('#holidayRegion').value = organizer.settings.holidays;
+
+  $('#importantDateForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.specialDates.push({
+      id: createId(),
+      title: $('#importantDateTitle').value.trim(),
+      date: $('#importantDateValue').value,
+      category: $('#importantDateCategory').value,
+      repeat: $('#importantDateRepeat').value
+    });
+    saveOrganizer();
+    event.target.reset();
+    $('#importantDateValue').value = key(selected);
+    renderImportantDates();
+    showOrganizerMessage('Data importante adicionada.');
+  };
+
+  $('#masterTaskForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.masterTasks.push({
+      id: createId(), text: $('#masterTaskText').value.trim(), date: $('#masterTaskDate').value,
+      category: $('#masterTaskCategory').value, done: false
+    });
+    saveOrganizer();
+    event.target.reset();
+    renderMasterTasks();
+    showOrganizerMessage('Tarefa adicionada à lista geral.');
+  };
+
+  $('#habitForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.habits.push({id: createId(), name: $('#habitName').value.trim(), category: $('#habitCategory').value});
+    saveOrganizer();
+    event.target.reset();
+    renderHabitTracker();
+    showOrganizerMessage('Hábito adicionado.');
+  };
+
+  $('#contactForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.contacts.push({
+      id: createId(), name: $('#contactName').value.trim(), phone: $('#contactPhone').value.trim(),
+      email: $('#contactEmail').value.trim(), notes: $('#contactNotes').value.trim(), emergency: $('#contactEmergency').checked
+    });
+    saveOrganizer();
+    event.target.reset();
+    renderContacts();
+    showOrganizerMessage('Contacto guardado.');
+  };
+
+  $('#informationForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.information.push({id: createId(), label: $('#informationLabel').value.trim(), value: $('#informationValue').value.trim()});
+    saveOrganizer();
+    event.target.reset();
+    renderInformation();
+    showOrganizerMessage('Informação guardada.');
+  };
+
+  $('#prevHabitMonth').onclick = () => {
+    habitCursor = new Date(habitCursor.getFullYear(), habitCursor.getMonth() - 1, 1, 12);
+    renderHabitTracker();
+  };
+  $('#nextHabitMonth').onclick = () => {
+    habitCursor = new Date(habitCursor.getFullYear(), habitCursor.getMonth() + 1, 1, 12);
+    renderHabitTracker();
+  };
+  $('#holidayRegion').onchange = event => {
+    organizer.settings.holidays = event.target.value;
+    saveOrganizer();
+    showOrganizerMessage('Preferência de feriados guardada.');
+  };
+  $('#globalSearch').oninput = renderSearchResults;
+  $('#exportBackup').onclick = exportAgendaBackup;
+  $('#importBackup').onclick = () => $('#backupFile').click();
+  $('#backupFile').onchange = event => {
+    const [file] = event.target.files;
+    if (file) importAgendaBackup(file);
+  };
+  organizerInitialized = true;
+}
+
+function renderOrganizer() {
+  initializeOrganizer();
+  $('#holidayRegion').value = organizer.settings.holidays;
+  renderImportantDates();
+  renderMasterTasks();
+  renderHabitTracker();
+  renderContacts();
+  renderInformation();
+  renderSearchResults();
+}
 
 function formatUtilityNumber(value, maximumFractionDigits = 6) {
   if (!Number.isFinite(value)) return '—';
@@ -1337,3 +2073,4 @@ $('#periodForm').onsubmit = event => {
 };
 
 renderDay();
+refreshUkHolidays();
