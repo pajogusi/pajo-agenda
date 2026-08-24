@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f3efe5">
   <title>Pajó Agenda</title>
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <header class="topbar">
@@ -25,6 +25,7 @@
     <button class="tab" data-view="month">Mês</button>
     <button class="tab" data-view="year">Ano</button>
     <button class="tab" data-view="planner">Planner</button>
+    <button class="tab" data-view="organizer">Organizador</button>
     <button class="tab" data-view="utilities">Utilidades</button>
   </nav>
 
@@ -131,6 +132,7 @@
               <span><i class="legend-today"></i>Hoje</span>
               <span><i class="legend-record"></i>Com registos</span>
               <span><i class="legend-period"></i>Período</span>
+              <span><i class="legend-event"></i>Data importante</span>
             </div>
             <button id="addPeriod" class="planner-add" type="button">+ Marcar período</button>
           </div>
@@ -144,6 +146,118 @@
           <div id="periodList" class="period-list"></div>
         </section>
       </div>
+    </section>
+
+    <section id="organizerView" class="view">
+      <div class="organizer-hero">
+        <div>
+          <span class="eyebrow planner-eyebrow">PÁGINAS DA AGENDA</span>
+          <h2>Organizador</h2>
+          <p>Datas importantes, tarefas gerais, hábitos, contactos e informações úteis.</p>
+        </div>
+        <div class="organizer-holiday-setting">
+          <label for="holidayRegion">Feriados visíveis</label>
+          <select id="holidayRegion">
+            <option value="both">Reino Unido e Portugal</option>
+            <option value="uk">Reino Unido</option>
+            <option value="pt">Portugal</option>
+            <option value="none">Não mostrar</option>
+          </select>
+          <small id="holidayStatus">England &amp; Wales + feriados nacionais portugueses</small>
+        </div>
+      </div>
+
+      <div class="organizer-tools">
+        <label class="organizer-search">
+          <span>Pesquisar em toda a agenda</span>
+          <input id="globalSearch" type="search" placeholder="Tarefas, notas, contactos, datas…" autocomplete="off">
+        </label>
+        <div class="backup-actions">
+          <button id="exportBackup" type="button">Exportar cópia</button>
+          <button id="importBackup" type="button">Importar cópia</button>
+          <input id="backupFile" type="file" accept="application/json,.json" hidden>
+        </div>
+      </div>
+      <div id="searchResults" class="search-results" hidden></div>
+
+      <div class="organizer-grid">
+        <article class="organizer-card important-dates-card">
+          <header>
+            <div><span class="organizer-kicker">CALENDÁRIO</span><h3>Datas importantes</h3></div>
+            <span>Aniversários e lembretes anuais</span>
+          </header>
+          <form id="importantDateForm" class="organizer-form organizer-form-dates">
+            <label>Nome<input id="importantDateTitle" type="text" maxlength="80" placeholder="Ex.: Aniversário da Ju" required></label>
+            <label>Data<input id="importantDateValue" type="date" required></label>
+            <label>Categoria<select id="importantDateCategory"></select></label>
+            <label>Repetição<select id="importantDateRepeat"><option value="yearly">Todos os anos</option><option value="once">Só nesta data</option></select></label>
+            <button type="submit">+ Adicionar</button>
+          </form>
+          <div id="importantDateList" class="organizer-list"></div>
+        </article>
+
+        <article class="organizer-card master-tasks-card">
+          <header>
+            <div><span class="organizer-kicker">A FAZER</span><h3>Lista geral de tarefas</h3></div>
+            <span>A data é opcional</span>
+          </header>
+          <form id="masterTaskForm" class="organizer-form organizer-form-tasks">
+            <label>Tarefa<input id="masterTaskText" type="text" maxlength="100" placeholder="O que é preciso fazer?" required></label>
+            <label>Data<input id="masterTaskDate" type="date"></label>
+            <label>Categoria<select id="masterTaskCategory"></select></label>
+            <button type="submit">+ Adicionar</button>
+          </form>
+          <div id="masterTaskList" class="organizer-list"></div>
+        </article>
+
+        <article class="organizer-card habits-card">
+          <header>
+            <div><span class="organizer-kicker">ROTINAS</span><h3>Hábitos mensais</h3></div>
+            <div class="habit-navigation">
+              <button id="prevHabitMonth" type="button" aria-label="Mês anterior">‹</button>
+              <strong id="habitMonthTitle"></strong>
+              <button id="nextHabitMonth" type="button" aria-label="Mês seguinte">›</button>
+            </div>
+          </header>
+          <form id="habitForm" class="organizer-form organizer-form-habits">
+            <label>Novo hábito<input id="habitName" type="text" maxlength="60" placeholder="Ex.: Caminhar 30 minutos" required></label>
+            <label>Categoria<select id="habitCategory"></select></label>
+            <button type="submit">+ Adicionar</button>
+          </form>
+          <div id="habitTracker" class="habit-tracker"></div>
+        </article>
+
+        <article class="organizer-card contacts-card">
+          <header>
+            <div><span class="organizer-kicker">AGENDA TELEFÓNICA</span><h3>Contactos</h3></div>
+            <span>Telefone, email e notas</span>
+          </header>
+          <form id="contactForm" class="organizer-form organizer-form-contacts">
+            <label>Nome<input id="contactName" type="text" maxlength="80" required></label>
+            <label>Telefone<input id="contactPhone" type="tel" maxlength="40"></label>
+            <label>Email<input id="contactEmail" type="email" maxlength="100"></label>
+            <label>Notas<input id="contactNotes" type="text" maxlength="120"></label>
+            <label class="contact-emergency"><input id="contactEmergency" type="checkbox"> Contacto de emergência</label>
+            <button type="submit">+ Guardar contacto</button>
+          </form>
+          <div id="contactList" class="organizer-list"></div>
+        </article>
+
+        <article class="organizer-card information-card">
+          <header>
+            <div><span class="organizer-kicker">REFERÊNCIA</span><h3>Informações importantes</h3></div>
+            <span>Não guardar palavras-passe</span>
+          </header>
+          <p class="security-note">Guarda apenas referências úteis, como seguradora, matrícula, clínica ou número de cliente. Esta agenda não é um cofre seguro.</p>
+          <form id="informationForm" class="organizer-form organizer-form-information">
+            <label>Descrição<input id="informationLabel" type="text" maxlength="80" placeholder="Ex.: Matrícula do carro" required></label>
+            <label>Informação<input id="informationValue" type="text" maxlength="140" required></label>
+            <button type="submit">+ Guardar</button>
+          </form>
+          <div id="informationList" class="organizer-list"></div>
+        </article>
+      </div>
+      <div id="organizerMessage" class="utility-message" role="status" aria-live="polite"></div>
     </section>
 
     <section id="utilitiesView" class="view">
@@ -205,6 +319,6 @@
   </dialog>
 
   <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
