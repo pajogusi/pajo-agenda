@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f3efe5">
   <title>Pajó Agenda</title>
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <header class="topbar">
@@ -25,6 +25,7 @@
     <button class="tab" data-view="month">Mês</button>
     <button class="tab" data-view="year">Ano</button>
     <button class="tab" data-view="planner">Planner</button>
+    <button class="tab" data-view="utilities">Utilidades</button>
   </nav>
 
   <main>
@@ -144,6 +145,21 @@
         </section>
       </div>
     </section>
+
+    <section id="utilitiesView" class="view">
+      <div class="utilities-hero">
+        <div>
+          <span class="eyebrow planner-eyebrow">FERRAMENTAS PRÁTICAS</span>
+          <h2>Utilidades</h2>
+          <p>Conversões rápidas para casa, viagens e dia a dia.</p>
+        </div>
+        <span class="utilities-offline">Conversões disponíveis sem internet</span>
+      </div>
+
+      <div id="utilityFilters" class="utility-filters" aria-label="Categorias de utilidades"></div>
+      <div id="utilitiesGrid" class="utilities-grid"></div>
+      <div id="utilityMessage" class="utility-message" role="status" aria-live="polite"></div>
+    </section>
   </main>
 
   <dialog id="periodDialog" class="period-dialog" aria-labelledby="periodDialogTitle">
@@ -189,6 +205,6 @@
   </dialog>
 
   <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
