@@ -487,19 +487,13 @@ main {
 }
 
 .planner-wrap {
-  overflow-x: auto;
+  overflow: hidden;
   border: 1px solid #bdb5a7;
-  scrollbar-color: #8a8173 #e8e2d6;
-}
-
-.planner-wrap:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .planner-table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 0;
   table-layout: fixed;
   border-collapse: collapse;
   font-family: Arial, sans-serif;
@@ -524,15 +518,13 @@ main {
 
 .planner-table .month-heading,
 .planner-month {
-  width: 108px;
-  min-width: 108px;
-  position: sticky;
-  left: 0;
+  width: 82px;
+  min-width: 82px;
   z-index: 2;
 }
 
 .planner-table .month-heading {
-  z-index: 3;
+  z-index: 2;
   letter-spacing: .08em;
 }
 
@@ -558,7 +550,7 @@ main {
   color: #777064;
 }
 
-.planner-table td { width: 32px; }
+.planner-table td { width: auto; }
 
 .planner-day {
   width: 100%;
@@ -798,7 +790,19 @@ footer {
   .planner-heading-actions { width: 100%; align-items: flex-start; flex-direction: column; gap: 10px; }
   .planner-legend { flex-wrap: wrap; }
   .planner-add { width: 100%; }
-  .planner-table { min-width: 1080px; }
+  .planner-paper { padding: 7px; }
+  .planner-table { min-width: 0; }
+  .planner-table .month-heading,
+  .planner-month { width: 38px; min-width: 38px; }
+  .planner-table th,
+  .planner-table td { height: 31px; }
+  .planner-table thead th { height: 27px; font-size: .48rem; }
+  .planner-month { padding: 0 3px !important; }
+  .planner-month strong { font-size: .55rem; letter-spacing: 0; }
+  .planner-month span { display: none; }
+  .planner-day { min-height: 30px; }
+  .planner-day.has-tasks::after { top: 7px; width: 5px; height: 5px; }
+  .planner-day.has-notes::before { bottom: 6px; width: 7px; }
   .period-list { grid-template-columns: 1fr; }
   .period-date-fields { grid-template-columns: 1fr; gap: 0; }
   .week-grid { grid-template-columns: 1fr; }
