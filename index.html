@@ -8,12 +8,94 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="topbar"><div><span class="eyebrow">PAJÓ</span><h1>Agenda Digital</h1></div><button id="todayBtn">Hoje</button></header>
-<nav class="tabs" aria-label="Vistas"><button class="tab active" data-view="day">Dia</button><button class="tab" data-view="month">Mês</button><button class="tab" data-view="year">Ano</button></nav>
-<main>
-<section id="dayView" class="view active"><div class="day-head"><button id="prevDay" aria-label="Dia anterior">‹</button><div><div id="dayWeek" class="day-week"></div><div class="date-line"><strong id="dayNumber"></strong><span id="dayMonthYear"></span></div></div><button id="nextDay" aria-label="Dia seguinte">›</button></div><div class="paper"><div class="section-title">Compromissos e tarefas</div><div id="tasks" class="tasks"></div><button id="addTask" class="add">+ Adicionar tarefa</button><div class="section-title notes-title">Notas do dia</div><textarea id="notes" class="lined-paper" placeholder="Escreve aqui..."></textarea><div id="saveState" class="save-state">Guardado automaticamente</div></div></section>
-<section id="monthView" class="view"><div class="navigator"><button id="prevMonth">‹</button><h2 id="monthTitle"></h2><button id="nextMonth">›</button></div><div class="weekdays"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div><div id="monthGrid" class="month-grid"></div></section>
-<section id="yearView" class="view"><div class="navigator"><button id="prevYear">‹</button><h2 id="yearTitle"></h2><button id="nextYear">›</button></div><div id="yearGrid" class="year-grid"></div></section>
-</main>
-<footer>Os dados desta versão ficam guardados apenas neste browser.</footer><script src="app.js"></script>
-</body></html>
+  <header class="topbar">
+    <div>
+      <span class="eyebrow">PAJÓ</span>
+      <h1>Agenda Digital</h1>
+    </div>
+    <button id="todayBtn">Hoje</button>
+  </header>
+
+  <nav class="tabs" aria-label="Vistas">
+    <button class="tab active" data-view="day">Dia</button>
+    <button class="tab" data-view="month">Mês</button>
+    <button class="tab" data-view="year">Ano</button>
+    <button class="tab" data-view="planner">Planner</button>
+  </nav>
+
+  <main>
+    <section id="dayView" class="view active">
+      <div class="day-head">
+        <button id="prevDay" aria-label="Dia anterior">‹</button>
+        <div>
+          <div id="dayWeek" class="day-week"></div>
+          <div class="date-line">
+            <strong id="dayNumber"></strong>
+            <span id="dayMonthYear"></span>
+          </div>
+        </div>
+        <button id="nextDay" aria-label="Dia seguinte">›</button>
+      </div>
+
+      <div class="paper">
+        <div class="section-title">Compromissos e tarefas</div>
+        <div id="tasks" class="tasks"></div>
+        <button id="addTask" class="add">+ Adicionar tarefa</button>
+
+        <div class="section-title notes-title">Notas do dia</div>
+        <textarea id="notes" class="lined-paper" placeholder="Escreve aqui..."></textarea>
+        <div id="saveState" class="save-state">Guardado automaticamente</div>
+      </div>
+    </section>
+
+    <section id="monthView" class="view">
+      <div class="navigator">
+        <button id="prevMonth" aria-label="Mês anterior">‹</button>
+        <h2 id="monthTitle"></h2>
+        <button id="nextMonth" aria-label="Mês seguinte">›</button>
+      </div>
+      <div class="weekdays">
+        <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span>
+      </div>
+      <div id="monthGrid" class="month-grid"></div>
+    </section>
+
+    <section id="yearView" class="view">
+      <div class="navigator">
+        <button id="prevYear" aria-label="Ano anterior">‹</button>
+        <h2 id="yearTitle"></h2>
+        <button id="nextYear" aria-label="Ano seguinte">›</button>
+      </div>
+      <div id="yearGrid" class="year-grid"></div>
+    </section>
+
+    <section id="plannerView" class="view">
+      <div class="navigator">
+        <button id="prevPlannerYear" aria-label="Ano anterior">‹</button>
+        <h2 id="plannerTitle"></h2>
+        <button id="nextPlannerYear" aria-label="Ano seguinte">›</button>
+      </div>
+
+      <div class="planner-paper">
+        <div class="planner-heading">
+          <div>
+            <span class="eyebrow planner-eyebrow">VISÃO GERAL</span>
+            <h3>Planner anual</h3>
+          </div>
+          <div class="planner-legend" aria-label="Legenda">
+            <span><i class="legend-today"></i>Hoje</span>
+            <span><i class="legend-record"></i>Com registos</span>
+          </div>
+        </div>
+        <p class="planner-help">Seleciona um dia para abrir a página diária. Desliza a tabela para os lados no telemóvel.</p>
+        <div class="planner-wrap" tabindex="0" aria-label="Planner anual com deslocação horizontal">
+          <table id="plannerTable" class="planner-table"></table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
+  <script src="app.js"></script>
+</body>
+</html>
