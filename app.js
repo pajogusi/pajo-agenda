@@ -14,6 +14,7 @@ selected.setHours(12, 0, 0, 0);
 let monthCursor = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
 let yearCursor = selected.getFullYear();
 let plannerCursor = selected.getFullYear();
+let utilitiesInitialized = false;
 
 function startOfWeek(date) {
   const offset = (date.getDay() + 6) % 7;
@@ -34,6 +35,127 @@ const PERIOD_TYPES = {
   health: {label: 'Saúde', color: '#9a5e78'},
   personal: {label: 'Pessoal', color: '#b66d32'}
 };
+
+const CURRENCY_CACHE_KEY = 'pajo-agenda-currency-v1';
+const CURRENCIES = [
+  ['GBP', 'Libra esterlina'], ['EUR', 'Euro'], ['USD', 'Dólar americano'],
+  ['CHF', 'Franco suíço'], ['CAD', 'Dólar canadiano'], ['AUD', 'Dólar australiano'],
+  ['BRL', 'Real brasileiro'], ['PLN', 'Zlóti polaco'], ['JPY', 'Iene japonês'],
+  ['CNY', 'Yuan chinês'], ['INR', 'Rupia indiana']
+];
+
+const UTILITY_FILTERS = [
+  ['all', 'Todas'], ['measures', 'Medidas'], ['home', 'Casa e cozinha'],
+  ['travel', 'Viagem'], ['money', 'Divisas'], ['dates', 'Datas'], ['digital', 'Digital']
+];
+
+const CONVERTERS = [
+  {
+    id: 'length', title: 'Comprimento e distância', description: 'Do milímetro à milha.', category: 'measures',
+    defaultValue: 1, from: 'km', to: 'mi',
+    units: [
+      ['mm', 'Milímetros (mm)', 0.001], ['cm', 'Centímetros (cm)', 0.01],
+      ['m', 'Metros (m)', 1], ['km', 'Quilómetros (km)', 1000],
+      ['in', 'Polegadas (in)', 0.0254], ['ft', 'Pés (ft)', 0.3048],
+      ['yd', 'Jardas (yd)', 0.9144], ['mi', 'Milhas (mi)', 1609.344]
+    ]
+  },
+  {
+    id: 'weight', title: 'Peso', description: 'Inclui libras e stones usados no Reino Unido.', category: 'measures',
+    defaultValue: 1, from: 'kg', to: 'lb',
+    units: [
+      ['g', 'Gramas (g)', 0.001], ['kg', 'Quilogramas (kg)', 1],
+      ['oz', 'Onças (oz)', 0.028349523125], ['lb', 'Libras (lb)', 0.45359237],
+      ['st', 'Stones (st)', 6.35029318]
+    ]
+  },
+  {
+    id: 'liquid', title: 'Líquidos', description: 'Medidas métricas, britânicas e americanas.', category: 'measures',
+    defaultValue: 1, from: 'l', to: 'uk-pint',
+    units: [
+      ['ml', 'Mililitros (ml)', 0.001], ['cl', 'Centilitros (cl)', 0.01], ['l', 'Litros (l)', 1],
+      ['uk-floz', 'Fluid ounces UK', 0.0284130625], ['uk-pint', 'Pints UK', 0.56826125],
+      ['uk-gallon', 'Gallons UK', 4.54609], ['us-floz', 'Fluid ounces US', 0.0295735295625],
+      ['us-pint', 'Pints US', 0.473176473], ['us-gallon', 'Gallons US', 3.785411784]
+    ]
+  },
+  {
+    id: 'temperature', title: 'Temperatura', description: 'Celsius, Fahrenheit e Kelvin.', category: 'measures',
+    defaultValue: 20, from: 'c', to: 'f',
+    units: [['c', 'Celsius (°C)'], ['f', 'Fahrenheit (°F)'], ['k', 'Kelvin (K)']],
+    toBase(value, unit) {
+      if (unit === 'f') return (value - 32) * 5 / 9;
+      if (unit === 'k') return value - 273.15;
+      return value;
+    },
+    fromBase(value, unit) {
+      if (unit === 'f') return value * 9 / 5 + 32;
+      if (unit === 'k') return value + 273.15;
+      return value;
+    }
+  },
+  {
+    id: 'area', title: 'Área', description: 'De metros quadrados a acres.', category: 'measures',
+    defaultValue: 100, from: 'm2', to: 'ft2',
+    units: [
+      ['cm2', 'Centímetros² (cm²)', 0.0001], ['m2', 'Metros² (m²)', 1],
+      ['km2', 'Quilómetros² (km²)', 1000000], ['ha', 'Hectares (ha)', 10000],
+      ['ft2', 'Pés² (ft²)', 0.09290304], ['yd2', 'Jardas² (yd²)', 0.83612736],
+      ['acre', 'Acres', 4046.8564224]
+    ]
+  },
+  {
+    id: 'speed', title: 'Velocidade', description: 'Útil para condução e meteorologia.', category: 'travel',
+    defaultValue: 100, from: 'kmh', to: 'mph',
+    units: [
+      ['kmh', 'Quilómetros/hora', 1], ['mph', 'Milhas/hora', 1.609344],
+      ['ms', 'Metros/segundo', 3.6], ['knot', 'Nós', 1.852]
+    ]
+  },
+  {
+    id: 'economy', title: 'Consumo automóvel', description: 'MPG britânico, americano e L/100 km.', category: 'travel',
+    defaultValue: 50, from: 'mpg-uk', to: 'l100',
+    units: [
+      ['l100', 'Litros/100 km'], ['mpg-uk', 'MPG britânico'],
+      ['mpg-us', 'MPG americano'], ['kml', 'Quilómetros/litro']
+    ],
+    toBase(value, unit) {
+      if (value <= 0) return NaN;
+      if (unit === 'mpg-uk') return 282.480936 / value;
+      if (unit === 'mpg-us') return 235.214583 / value;
+      if (unit === 'kml') return 100 / value;
+      return value;
+    },
+    fromBase(value, unit) {
+      if (value <= 0) return NaN;
+      if (unit === 'mpg-uk') return 282.480936 / value;
+      if (unit === 'mpg-us') return 235.214583 / value;
+      if (unit === 'kml') return 100 / value;
+      return value;
+    }
+  },
+  {
+    id: 'cooking', title: 'Medidas de cozinha', description: 'Copos, colheres e medidas líquidas.', category: 'home',
+    defaultValue: 1, from: 'metric-cup', to: 'ml',
+    units: [
+      ['ml', 'Mililitros (ml)', 1], ['l', 'Litros (l)', 1000],
+      ['tsp', 'Colher de chá', 5], ['tbsp', 'Colher de sopa', 15],
+      ['metric-cup', 'Copo métrico', 250], ['us-cup', 'Cup americano', 236.5882365],
+      ['uk-floz', 'Fluid ounce UK', 28.4130625], ['us-floz', 'Fluid ounce US', 29.5735295625]
+    ]
+  },
+  {
+    id: 'storage', title: 'Armazenamento digital', description: 'Distingue bytes de bits e unidades decimais de binárias.', category: 'digital',
+    defaultValue: 1, from: 'gb', to: 'mb',
+    units: [
+      ['bit', 'Bits', 0.125], ['byte', 'Bytes', 1], ['kb', 'Kilobytes (KB)', 1000],
+      ['mb', 'Megabytes (MB)', 1000000], ['gb', 'Gigabytes (GB)', 1000000000],
+      ['tb', 'Terabytes (TB)', 1000000000000], ['kib', 'Kibibytes (KiB)', 1024],
+      ['mib', 'Mebibytes (MiB)', 1048576], ['gib', 'Gibibytes (GiB)', 1073741824],
+      ['megabit', 'Megabits (Mb)', 125000]
+    ]
+  }
+];
 
 const key = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const dayData = date => {
@@ -271,6 +393,7 @@ function show(name) {
   if (name === 'month') renderMonth();
   if (name === 'year') renderYear();
   if (name === 'planner') renderPlanner();
+  if (name === 'utilities') renderUtilities();
 }
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -729,6 +852,442 @@ $('#nextPlannerYear').onclick = () => {
   plannerCursor += 1;
   renderPlanner();
 };
+
+function formatUtilityNumber(value, maximumFractionDigits = 6) {
+  if (!Number.isFinite(value)) return '—';
+  const absolute = Math.abs(value);
+  if ((absolute > 0 && absolute < 0.000001) || absolute >= 1000000000000) {
+    return value.toExponential(4);
+  }
+  return new Intl.NumberFormat('pt-PT', {maximumFractionDigits}).format(value);
+}
+
+function showUtilityMessage(message) {
+  const root = $('#utilityMessage');
+  root.textContent = message;
+  clearTimeout(showUtilityMessage.timer);
+  showUtilityMessage.timer = setTimeout(() => { root.textContent = ''; }, 2200);
+}
+
+async function copyUtilityValue(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    showUtilityMessage('Resultado copiado.');
+  } catch {
+    showUtilityMessage('Não foi possível copiar automaticamente.');
+  }
+}
+
+function utilityUnitOptions(units) {
+  return units.map(unit => `<option value="${unit[0]}">${unit[1]}</option>`).join('');
+}
+
+function convertUtilityValue(converter, value, fromId, toId) {
+  if (!Number.isFinite(value)) return NaN;
+  if (converter.toBase && converter.fromBase) {
+    return converter.fromBase(converter.toBase(value, fromId), toId);
+  }
+  const from = converter.units.find(unit => unit[0] === fromId);
+  const to = converter.units.find(unit => unit[0] === toId);
+  return value * from[2] / to[2];
+}
+
+function createUtilityCard(title, description, category, modifier = '') {
+  const card = document.createElement('article');
+  card.className = `utility-card${modifier ? ` ${modifier}` : ''}`;
+  card.dataset.category = category;
+  card.innerHTML = `<header><h3>${title}</h3><p>${description}</p></header>`;
+  return card;
+}
+
+function createGenericConverter(converter) {
+  const card = createUtilityCard(converter.title, converter.description, converter.category);
+  const body = document.createElement('div');
+  body.className = 'converter-body';
+  body.innerHTML = `
+    <label class="utility-field">Valor<input class="utility-input" type="number" step="any" inputmode="decimal" value="${converter.defaultValue}"></label>
+    <div class="converter-units">
+      <label class="utility-field">De<select class="utility-from">${utilityUnitOptions(converter.units)}</select></label>
+      <button class="utility-swap" type="button" aria-label="Trocar unidades">⇄</button>
+      <label class="utility-field">Para<select class="utility-to">${utilityUnitOptions(converter.units)}</select></label>
+    </div>
+    <div class="utility-result-row"><output class="utility-result"></output><button class="utility-copy" type="button">Copiar</button></div>`;
+  card.appendChild(body);
+
+  const input = body.querySelector('.utility-input');
+  const from = body.querySelector('.utility-from');
+  const to = body.querySelector('.utility-to');
+  const result = body.querySelector('.utility-result');
+  from.value = converter.from;
+  to.value = converter.to;
+
+  const calculate = () => {
+    const converted = convertUtilityValue(converter, Number(input.value), from.value, to.value);
+    result.value = Number.isFinite(converted) ? formatUtilityNumber(converted) : '—';
+    result.dataset.copyValue = Number.isFinite(converted) ? String(converted) : '';
+  };
+
+  input.oninput = calculate;
+  from.onchange = calculate;
+  to.onchange = calculate;
+  body.querySelector('.utility-swap').onclick = () => {
+    [from.value, to.value] = [to.value, from.value];
+    calculate();
+  };
+  body.querySelector('.utility-copy').onclick = () => {
+    if (result.dataset.copyValue) copyUtilityValue(result.dataset.copyValue);
+  };
+  calculate();
+  return card;
+}
+
+function readCurrencyCache() {
+  try {
+    return JSON.parse(localStorage.getItem(CURRENCY_CACHE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function currencyOptions() {
+  return CURRENCIES.map(([code, name]) => `<option value="${code}">${code} — ${name}</option>`).join('');
+}
+
+function createCurrencyCard() {
+  const card = createUtilityCard('Divisas', 'Taxas de referência atualizadas pela internet.', 'money', 'currency-card');
+  const body = document.createElement('div');
+  body.className = 'converter-body';
+  body.innerHTML = `
+    <label class="utility-field">Montante<input class="currency-amount" type="number" step="any" inputmode="decimal" value="100"></label>
+    <div class="converter-units">
+      <label class="utility-field">De<select class="currency-from">${currencyOptions()}</select></label>
+      <button class="utility-swap currency-swap" type="button" aria-label="Trocar divisas">⇄</button>
+      <label class="utility-field">Para<select class="currency-to">${currencyOptions()}</select></label>
+    </div>
+    <div class="utility-result-row"><output class="utility-result currency-result">—</output><button class="utility-copy currency-copy" type="button">Copiar</button></div>
+    <div class="currency-footer"><span class="currency-status">A obter a taxa…</span><button class="currency-refresh" type="button">Atualizar taxa</button></div>
+    <p class="utility-disclaimer">Taxa de referência; o banco ou cartão pode aplicar outra taxa e comissões.</p>`;
+  card.appendChild(body);
+
+  const amount = body.querySelector('.currency-amount');
+  const from = body.querySelector('.currency-from');
+  const to = body.querySelector('.currency-to');
+  const result = body.querySelector('.currency-result');
+  const status = body.querySelector('.currency-status');
+  from.value = 'GBP';
+  to.value = 'EUR';
+  let currentRate = null;
+
+  const calculate = () => {
+    const converted = Number(amount.value) * currentRate;
+    result.value = Number.isFinite(converted) ? formatUtilityNumber(converted, 4) : '—';
+    result.dataset.copyValue = Number.isFinite(converted) ? String(converted) : '';
+  };
+
+  const refreshRate = async () => {
+    const base = from.value;
+    const quote = to.value;
+    if (base === quote) {
+      currentRate = 1;
+      status.textContent = 'As duas divisas são iguais.';
+      calculate();
+      return;
+    }
+
+    const cache = readCurrencyCache();
+    const pairKey = `${base}-${quote}`;
+    const cached = cache[pairKey];
+    if (cached?.rate) {
+      currentRate = Number(cached.rate);
+      status.textContent = `Última taxa guardada: ${cached.date || 'data não indicada'}`;
+      calculate();
+    } else {
+      currentRate = null;
+      result.value = '—';
+      status.textContent = 'A obter a taxa…';
+    }
+
+    try {
+      const response = await fetch(`https://api.frankfurter.dev/v2/rate/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`);
+      if (!response.ok) throw new Error('currency request failed');
+      const data = await response.json();
+      const rate = Number(data.rate);
+      if (!Number.isFinite(rate)) throw new Error('invalid currency rate');
+      currentRate = rate;
+      cache[pairKey] = {rate, date: data.date || '', savedAt: new Date().toISOString()};
+      localStorage.setItem(CURRENCY_CACHE_KEY, JSON.stringify(cache));
+      status.textContent = `Taxa de referência de ${data.date || 'hoje'}`;
+      calculate();
+    } catch {
+      status.textContent = cached?.rate
+        ? `Sem internet — a usar a taxa guardada de ${cached.date || 'data anterior'}`
+        : 'Não foi possível obter a taxa. Verifica a ligação.';
+    }
+  };
+
+  amount.oninput = calculate;
+  from.onchange = refreshRate;
+  to.onchange = refreshRate;
+  body.querySelector('.currency-swap').onclick = () => {
+    [from.value, to.value] = [to.value, from.value];
+    refreshRate();
+  };
+  body.querySelector('.currency-copy').onclick = () => {
+    if (result.dataset.copyValue) copyUtilityValue(result.dataset.copyValue);
+  };
+  body.querySelector('.currency-refresh').onclick = refreshRate;
+  refreshRate();
+  return card;
+}
+
+const SIZE_TABLES = [
+  {
+    id: 'men-shoes', label: 'Calçado — homem',
+    rows: [['39', '5.5'], ['40', '6.5'], ['41', '7'], ['42', '8'], ['43', '9'], ['44', '9.5'], ['45', '10.5'], ['46', '11'], ['47', '12'], ['48', '13']]
+  },
+  {
+    id: 'women-shoes', label: 'Calçado — mulher',
+    rows: [['35', '2.5'], ['36', '3.5'], ['37', '4'], ['38', '5'], ['39', '6'], ['40', '6.5'], ['41', '7.5'], ['42', '8']]
+  },
+  {
+    id: 'women-clothes', label: 'Roupa — mulher',
+    rows: [['34', '6'], ['36', '8'], ['38', '10'], ['40', '12'], ['42', '14'], ['44', '16'], ['46', '18'], ['48', '20']]
+  },
+  {
+    id: 'men-jackets', label: 'Casacos — homem',
+    rows: [['44', '34'], ['46', '36'], ['48', '38'], ['50', '40'], ['52', '42'], ['54', '44'], ['56', '46'], ['58', '48']]
+  }
+];
+
+function createSizeCard() {
+  const card = createUtilityCard('Tamanhos UK e EU', 'Referência rápida para calçado e roupa.', 'home');
+  const body = document.createElement('div');
+  body.className = 'converter-body';
+  body.innerHTML = `
+    <label class="utility-field">Categoria<select class="size-category">${SIZE_TABLES.map(table => `<option value="${table.id}">${table.label}</option>`).join('')}</select></label>
+    <div class="converter-units">
+      <label class="utility-field">Sistema<select class="size-direction"><option value="eu-uk">EU → UK</option><option value="uk-eu">UK → EU</option></select></label>
+      <button class="utility-swap size-swap" type="button" aria-label="Trocar sistemas">⇄</button>
+      <label class="utility-field">Tamanho<select class="size-value"></select></label>
+    </div>
+    <div class="utility-result-row"><output class="utility-result size-result"></output><button class="utility-copy size-copy" type="button">Copiar</button></div>
+    <p class="utility-disclaimer">Valores aproximados: confirma sempre a tabela da marca.</p>`;
+  card.appendChild(body);
+  const category = body.querySelector('.size-category');
+  const direction = body.querySelector('.size-direction');
+  const value = body.querySelector('.size-value');
+  const result = body.querySelector('.size-result');
+
+  const populate = () => {
+    const table = SIZE_TABLES.find(item => item.id === category.value);
+    const sourceIndex = direction.value === 'eu-uk' ? 0 : 1;
+    value.innerHTML = table.rows.map(row => `<option value="${row[sourceIndex]}">${direction.value === 'eu-uk' ? 'EU' : 'UK'} ${row[sourceIndex]}</option>`).join('');
+    calculate();
+  };
+
+  const calculate = () => {
+    const table = SIZE_TABLES.find(item => item.id === category.value);
+    const sourceIndex = direction.value === 'eu-uk' ? 0 : 1;
+    const targetIndex = sourceIndex === 0 ? 1 : 0;
+    const row = table.rows.find(item => item[sourceIndex] === value.value);
+    const text = row ? `${direction.value === 'eu-uk' ? 'UK' : 'EU'} ${row[targetIndex]}` : '—';
+    result.value = text;
+    result.dataset.copyValue = text === '—' ? '' : text;
+  };
+
+  category.onchange = populate;
+  direction.onchange = populate;
+  value.onchange = calculate;
+  body.querySelector('.size-swap').onclick = () => {
+    direction.value = direction.value === 'eu-uk' ? 'uk-eu' : 'eu-uk';
+    populate();
+  };
+  body.querySelector('.size-copy').onclick = () => {
+    if (result.dataset.copyValue) copyUtilityValue(result.dataset.copyValue);
+  };
+  populate();
+  return card;
+}
+
+function createOvenCard() {
+  const card = createUtilityCard('Forno e Gas Mark', 'Equivalências usadas em receitas britânicas.', 'home');
+  const temperatures = [
+    ['¼', 110, 225], ['½', 120, 250], ['1', 140, 275], ['2', 150, 300],
+    ['3', 170, 325], ['4', 180, 350], ['5', 190, 375], ['6', 200, 400],
+    ['7', 220, 425], ['8', 230, 450], ['9', 240, 475]
+  ];
+  const body = document.createElement('div');
+  body.className = 'converter-body';
+  body.innerHTML = `
+    <label class="utility-field">Gas Mark<select class="oven-mark">${temperatures.map(row => `<option value="${row[0]}">Gas Mark ${row[0]}</option>`).join('')}</select></label>
+    <div class="oven-result"><strong></strong><span></span></div>
+    <p class="utility-disclaimer">As temperaturas podem variar ligeiramente conforme o forno.</p>`;
+  card.appendChild(body);
+  const select = body.querySelector('.oven-mark');
+  select.value = '4';
+  const calculate = () => {
+    const row = temperatures.find(item => item[0] === select.value);
+    body.querySelector('.oven-result strong').textContent = `${row[1]} °C`;
+    body.querySelector('.oven-result span').textContent = `${row[2]} °F`;
+  };
+  select.onchange = calculate;
+  calculate();
+  return card;
+}
+
+function parseDateValue(value) {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day, 12);
+}
+
+function calendarDifference(first, second) {
+  let start = first;
+  let end = second;
+  let reversed = false;
+  if (start > end) {
+    [start, end] = [end, start];
+    reversed = true;
+  }
+
+  let years = end.getFullYear() - start.getFullYear();
+  let cursor = new Date(start.getFullYear() + years, start.getMonth(), start.getDate(), 12);
+  if (cursor > end) {
+    years -= 1;
+    cursor = new Date(start.getFullYear() + years, start.getMonth(), start.getDate(), 12);
+  }
+
+  let months = (end.getFullYear() - cursor.getFullYear()) * 12 + end.getMonth() - cursor.getMonth();
+  let monthCursor = new Date(cursor.getFullYear(), cursor.getMonth() + months, cursor.getDate(), 12);
+  if (monthCursor > end) {
+    months -= 1;
+    monthCursor = new Date(cursor.getFullYear(), cursor.getMonth() + months, cursor.getDate(), 12);
+  }
+
+  const days = Math.round((Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) - Date.UTC(monthCursor.getFullYear(), monthCursor.getMonth(), monthCursor.getDate())) / 86400000);
+  const totalDays = Math.round((Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86400000);
+  return {years, months, days, totalDays, reversed};
+}
+
+function createDateCard() {
+  const card = createUtilityCard('Datas e idade', 'Calcula a diferença exata entre duas datas.', 'dates');
+  const today = key(new Date());
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const body = document.createElement('div');
+  body.className = 'converter-body';
+  body.innerHTML = `
+    <div class="date-fields">
+      <label class="utility-field">Data inicial<input class="date-start" type="date" value="${yearStart}"></label>
+      <label class="utility-field">Data final<input class="date-end" type="date" value="${today}"></label>
+    </div>
+    <div class="utility-result-row"><output class="utility-result date-result"></output><button class="utility-copy date-copy" type="button">Copiar</button></div>`;
+  card.appendChild(body);
+  const start = body.querySelector('.date-start');
+  const end = body.querySelector('.date-end');
+  const result = body.querySelector('.date-result');
+
+  const calculate = () => {
+    const startDate = parseDateValue(start.value);
+    const endDate = parseDateValue(end.value);
+    if (!startDate || !endDate) {
+      result.value = 'Escolhe as duas datas';
+      result.dataset.copyValue = '';
+      return;
+    }
+    const difference = calendarDifference(startDate, endDate);
+    const text = `${difference.reversed ? 'Intervalo inverso · ' : ''}${difference.years} anos, ${difference.months} meses e ${difference.days} dias · ${difference.totalDays} dias no total`;
+    result.value = text;
+    result.dataset.copyValue = text;
+  };
+  start.onchange = calculate;
+  end.onchange = calculate;
+  body.querySelector('.date-copy').onclick = () => copyUtilityValue(result.dataset.copyValue);
+  calculate();
+  return card;
+}
+
+function createTripCard() {
+  const card = createUtilityCard('Custo de viagem', 'Calcula combustível necessário e custo estimado.', 'travel');
+  const body = document.createElement('div');
+  body.className = 'converter-body';
+  body.innerHTML = `
+    <div class="trip-fields">
+      <label class="utility-field">Distância<input class="trip-distance" type="number" min="0" step="any" value="100"></label>
+      <label class="utility-field">Unidade<select class="trip-distance-unit"><option value="mi">Milhas</option><option value="km">Quilómetros</option></select></label>
+      <label class="utility-field">Consumo<input class="trip-economy" type="number" min="0" step="any" value="50"></label>
+      <label class="utility-field">Formato<select class="trip-economy-unit"><option value="mpg-uk">MPG britânico</option><option value="mpg-us">MPG americano</option><option value="l100">L/100 km</option><option value="kml">km/l</option></select></label>
+      <label class="utility-field trip-price">Preço por litro (£)<input class="trip-fuel-price" type="number" min="0" step="0.01" value="1.45"></label>
+    </div>
+    <div class="trip-result"><strong></strong><span></span></div>`;
+  card.appendChild(body);
+  const distance = body.querySelector('.trip-distance');
+  const distanceUnit = body.querySelector('.trip-distance-unit');
+  const economy = body.querySelector('.trip-economy');
+  const economyUnit = body.querySelector('.trip-economy-unit');
+  const price = body.querySelector('.trip-fuel-price');
+
+  const calculate = () => {
+    const distanceValue = Number(distance.value);
+    const economyValue = Number(economy.value);
+    const priceValue = Number(price.value);
+    if (!(distanceValue >= 0) || !(economyValue > 0) || !(priceValue >= 0)) {
+      body.querySelector('.trip-result strong').textContent = '—';
+      body.querySelector('.trip-result span').textContent = 'Introduz valores válidos.';
+      return;
+    }
+    const distanceKm = distanceUnit.value === 'mi' ? distanceValue * 1.609344 : distanceValue;
+    const distanceMiles = distanceUnit.value === 'mi' ? distanceValue : distanceValue / 1.609344;
+    let litres;
+    if (economyUnit.value === 'mpg-uk') litres = distanceMiles / economyValue * 4.54609;
+    else if (economyUnit.value === 'mpg-us') litres = distanceMiles / economyValue * 3.785411784;
+    else if (economyUnit.value === 'kml') litres = distanceKm / economyValue;
+    else litres = distanceKm / 100 * economyValue;
+    const cost = litres * priceValue;
+    body.querySelector('.trip-result strong').textContent = `${formatUtilityNumber(litres, 2)} litros`;
+    body.querySelector('.trip-result span').textContent = new Intl.NumberFormat('en-GB', {style: 'currency', currency: 'GBP'}).format(cost);
+  };
+
+  [distance, distanceUnit, economy, economyUnit, price].forEach(field => {
+    field.oninput = calculate;
+    field.onchange = calculate;
+  });
+  calculate();
+  return card;
+}
+
+function renderUtilityFilters() {
+  const root = $('#utilityFilters');
+  root.innerHTML = '';
+  UTILITY_FILTERS.forEach(([id, label], index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = index === 0 ? 'active' : '';
+    button.textContent = label;
+    button.onclick = () => {
+      root.querySelectorAll('button').forEach(item => item.classList.toggle('active', item === button));
+      document.querySelectorAll('.utility-card').forEach(card => {
+        card.hidden = id !== 'all' && card.dataset.category !== id;
+      });
+    };
+    root.appendChild(button);
+  });
+}
+
+function renderUtilities() {
+  if (utilitiesInitialized) return;
+  const root = $('#utilitiesGrid');
+  root.innerHTML = '';
+  CONVERTERS.forEach(converter => root.appendChild(createGenericConverter(converter)));
+  root.append(
+    createCurrencyCard(),
+    createSizeCard(),
+    createOvenCard(),
+    createDateCard(),
+    createTripCard()
+  );
+  renderUtilityFilters();
+  utilitiesInitialized = true;
+}
 
 $('#addPeriod').onclick = () => {
   const initialDate = selected.getFullYear() === plannerCursor
