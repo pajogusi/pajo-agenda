@@ -18,6 +18,7 @@
 
   <nav class="tabs" aria-label="Vistas">
     <button class="tab active" data-view="day">Dia</button>
+    <button class="tab" data-view="week">Semana</button>
     <button class="tab" data-view="month">Mês</button>
     <button class="tab" data-view="year">Ano</button>
     <button class="tab" data-view="planner">Planner</button>
@@ -37,6 +38,8 @@
         <button id="nextDay" aria-label="Dia seguinte">›</button>
       </div>
 
+      <div id="dayPeriods" class="day-periods" aria-label="Períodos deste dia"></div>
+
       <div class="paper">
         <div class="section-title">Compromissos e tarefas</div>
         <div id="tasks" class="tasks"></div>
@@ -46,6 +49,15 @@
         <textarea id="notes" class="lined-paper" placeholder="Escreve aqui..."></textarea>
         <div id="saveState" class="save-state">Guardado automaticamente</div>
       </div>
+    </section>
+
+    <section id="weekView" class="view">
+      <div class="navigator">
+        <button id="prevWeek" aria-label="Semana anterior">‹</button>
+        <h2 id="weekTitle"></h2>
+        <button id="nextWeek" aria-label="Semana seguinte">›</button>
+      </div>
+      <div id="weekGrid" class="week-grid"></div>
     </section>
 
     <section id="monthView" class="view">
@@ -82,18 +94,68 @@
             <span class="eyebrow planner-eyebrow">VISÃO GERAL</span>
             <h3>Planner anual</h3>
           </div>
-          <div class="planner-legend" aria-label="Legenda">
-            <span><i class="legend-today"></i>Hoje</span>
-            <span><i class="legend-record"></i>Com registos</span>
+          <div class="planner-heading-actions">
+            <div class="planner-legend" aria-label="Legenda">
+              <span><i class="legend-today"></i>Hoje</span>
+              <span><i class="legend-record"></i>Com registos</span>
+              <span><i class="legend-period"></i>Período</span>
+            </div>
+            <button id="addPeriod" class="planner-add" type="button">+ Marcar período</button>
           </div>
         </div>
         <p class="planner-help">Seleciona um dia para abrir a página diária. Desliza a tabela para os lados no telemóvel.</p>
         <div class="planner-wrap" tabindex="0" aria-label="Planner anual com deslocação horizontal">
           <table id="plannerTable" class="planner-table"></table>
         </div>
+        <section class="periods-section" aria-labelledby="periodsTitle">
+          <div id="periodsTitle" class="periods-title">Períodos marcados</div>
+          <div id="periodList" class="period-list"></div>
+        </section>
       </div>
     </section>
   </main>
+
+  <dialog id="periodDialog" class="period-dialog" aria-labelledby="periodDialogTitle">
+    <form id="periodForm">
+      <div class="period-dialog-head">
+        <span class="eyebrow planner-eyebrow">PLANNER ANUAL</span>
+        <h2 id="periodDialogTitle">Marcar um período</h2>
+        <p>Exemplo: férias de 10 a 24 de setembro.</p>
+      </div>
+
+      <label>
+        Nome do período
+        <input id="periodTitle" type="text" maxlength="60" placeholder="Ex.: Férias" required>
+      </label>
+
+      <div class="period-date-fields">
+        <label>
+          Data inicial
+          <input id="periodStart" type="date" required>
+        </label>
+        <label>
+          Data final
+          <input id="periodEnd" type="date" required>
+        </label>
+      </div>
+
+      <label>
+        Tipo e cor
+        <select id="periodType">
+          <option value="holiday">Férias — verde</option>
+          <option value="work">Trabalho — azul</option>
+          <option value="health">Saúde — rosa</option>
+          <option value="personal">Pessoal — laranja</option>
+        </select>
+      </label>
+
+      <div id="periodError" class="period-error" role="alert"></div>
+      <div class="period-dialog-actions">
+        <button id="cancelPeriod" type="button" class="secondary">Cancelar</button>
+        <button type="submit" class="primary">Guardar período</button>
+      </div>
+    </form>
+  </dialog>
 
   <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
   <script src="app.js"></script>
