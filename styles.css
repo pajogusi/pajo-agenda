@@ -168,7 +168,81 @@ main {
   margin-bottom: 5px;
 }
 
-.tasks { min-height: 145px; }
+.day-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.day-agenda,
+.day-writing { min-width: 0; }
+
+.day-agenda-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.day-agenda-title small {
+  color: var(--accent);
+  font-size: .67rem;
+  letter-spacing: .06em;
+}
+
+.day-schedule {
+  border-top: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+}
+
+.schedule-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  min-height: 38px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: #fffdf7;
+}
+
+.schedule-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--rule);
+  background: #f0ebdf;
+  color: #655f55;
+  font: 700 .72rem Arial, sans-serif;
+}
+
+.schedule-row input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 7px 10px;
+  font: .94rem Georgia, serif;
+}
+
+.schedule-row input:focus {
+  background: #fff8df;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.schedule-row input::placeholder { color: transparent; }
+.schedule-row:hover input::placeholder,
+.schedule-row input:focus::placeholder { color: #aaa295; }
+
+.schedule-row.is-current .schedule-time {
+  background: var(--accent);
+  color: white;
+}
+
+.schedule-row.is-current input { background: var(--accent-soft); }
+
+.tasks { min-height: 180px; }
 
 .task-row {
   display: grid;
@@ -216,7 +290,7 @@ main {
 
 .lined-paper {
   width: 100%;
-  min-height: 260px;
+  min-height: 360px;
   resize: vertical;
   border: 0;
   outline: 0;
@@ -230,6 +304,12 @@ main {
   text-align: right;
   font: italic .75rem Arial, sans-serif;
   color: #888;
+}
+
+@media (max-width: 850px) {
+  .day-layout { grid-template-columns: 1fr; }
+  .day-writing { margin-top: 4px; }
+  .lined-paper { min-height: 280px; }
 }
 
 .weekdays,
