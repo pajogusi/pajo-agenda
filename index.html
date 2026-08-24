@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f3efe5">
   <title>Pajó Agenda</title>
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
   <header class="topbar">
@@ -13,7 +13,10 @@
       <span class="eyebrow">PAJÓ</span>
       <h1>Agenda Digital</h1>
     </div>
-    <button id="todayBtn">Hoje</button>
+    <div class="topbar-actions">
+      <button id="printBtn" type="button">Imprimir</button>
+      <button id="todayBtn" type="button">Hoje</button>
+    </div>
   </header>
 
   <nav class="tabs" aria-label="Vistas">
@@ -186,6 +189,6 @@
   </dialog>
 
   <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
