@@ -6,6 +6,7 @@ const MONTHS = [
 ];
 const MONTHS_SHORT = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 const WEEK = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+const WEEK_SHORT = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const DAY_HOURS = Array.from({length: 17}, (_, index) => index + 6);
 
 let selected = new Date();
@@ -20,6 +21,7 @@ function startOfWeek(date) {
 }
 
 let weekCursor = startOfWeek(selected);
+let mobileWeekDayIndex = (selected.getDay() + 6) % 7;
 
 const KEY = 'pajo-agenda-v1';
 const PERIOD_KEY = 'pajo-agenda-periods-v1';
@@ -43,9 +45,15 @@ const dayData = date => {
   return data;
 };
 
+function setSaveState(message) {
+  document.querySelectorAll('.save-state').forEach(element => {
+    element.textContent = message;
+  });
+}
+
 function save() {
   localStorage.setItem(KEY, JSON.stringify(db));
-  $('#saveState').textContent = 'Guardado automaticamente';
+  setSaveState('Guardado automaticamente');
 }
 
 function savePeriods() {
@@ -102,6 +110,7 @@ function escapeHtml(value) {
 function openDay(date) {
   selected = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
   weekCursor = startOfWeek(date);
+  mobileWeekDayIndex = (date.getDay() + 6) % 7;
   monthCursor = new Date(date.getFullYear(), date.getMonth(), 1, 12);
   yearCursor = date.getFullYear();
   plannerCursor = date.getFullYear();
@@ -173,7 +182,7 @@ function renderDaySchedule(date, data) {
       const value = input.value;
       if (value.trim()) data.schedule[hour] = value;
       else delete data.schedule[hour];
-      $('#saveState').textContent = 'A guardar…';
+      setSaveState('A guardar…');
       save();
     };
 
@@ -204,7 +213,7 @@ $('#addTask').onclick = () => {
 
 $('#notes').oninput = event => {
   dayData(selected).notes = event.target.value;
-  $('#saveState').textContent = 'A guardar…';
+  setSaveState('A guardar…');
   save();
 };
 
@@ -221,6 +230,7 @@ $('#todayBtn').onclick = () => {
   selected.setHours(12, 0, 0, 0);
   monthCursor = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
   weekCursor = startOfWeek(selected);
+  mobileWeekDayIndex = (selected.getDay() + 6) % 7;
   yearCursor = selected.getFullYear();
   plannerCursor = selected.getFullYear();
   show('day');
@@ -250,42 +260,226 @@ function weekDateLabel(start, end) {
   return `${formatter.format(start)} ${start.getFullYear()} — ${formatter.format(end)} ${end.getFullYear()}`;
 }
 
-function renderWeek() {
-  const start = startOfWeek(weekCursor);
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 12);
-  $('#weekTitle').textContent = weekDateLabel(start, end);
-  const root = $('#weekGrid');
+function weekDates(start) {
+  return Array.from({length: 7}, (_, index) => (
+    new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12)
+  ));
+}
+
+function taskHour(task) {
+  if (!task.time) return null;
+  const hour = Number(task.time.split(':')[0]);
+  return Number.isInteger(hour) ? hour : null;
+}
+
+function tasksAtHour(data, hour) {
+  return (data?.tasks || []).filter(task => task.text?.trim() && taskHour(task) === hour);
+}
+
+function tasksOutsideWeekGrid(data) {
+  return (data?.tasks || []).filter(task => {
+    if (!task.text?.trim()) return false;
+    const hour = taskHour(task);
+    return hour === null || hour < DAY_HOURS[0] || hour > DAY_HOURS.at(-1);
+  });
+}
+
+function createWeekHeader(date, className) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `${className}${sameDay(date, new Date()) ? ' is-today' : ''}`;
+  button.innerHTML = `<span>${WEEK_SHORT[date.getDay()]}</span><strong>${date.getDate()}</strong><small>${MONTHS_SHORT[date.getMonth()]}</small>`;
+  button.setAttribute('aria-label', `Abrir ${date.getDate()} de ${MONTHS[date.getMonth()]}`);
+  button.onclick = () => openDay(date);
+  return button;
+}
+
+function createWeekScheduleInput(date, hour) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 100;
+  input.className = 'week-slot-input';
+  input.value = getData(date)?.schedule?.[hour] || '';
+  input.placeholder = 'Adicionar';
+  input.setAttribute('aria-label', `${WEEK[date.getDay()]} ${date.getDate()}, às ${String(hour).padStart(2, '0')}:00`);
+  input.oninput = () => {
+    const data = dayData(date);
+    if (input.value.trim()) data.schedule[hour] = input.value;
+    else delete data.schedule[hour];
+    setSaveState('A guardar…');
+    save();
+  };
+  return input;
+}
+
+function createWeekTaskChip(task, date, showTime = false) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `week-task-chip${task.done ? ' done' : ''}`;
+  button.textContent = `${showTime && task.time ? `${task.time} · ` : ''}${task.text}`;
+  button.title = 'Abrir na página diária';
+  button.onclick = () => openDay(date);
+  return button;
+}
+
+function createWeekPeriodCell(date, index) {
+  const cell = document.createElement('div');
+  const datePeriods = periodsForDate(date);
+  const mainPeriod = datePeriods[0];
+  cell.className = 'week-period-cell';
+  if (!mainPeriod) return cell;
+
+  const type = PERIOD_TYPES[mainPeriod.type] || PERIOD_TYPES.personal;
+  const startsHere = mainPeriod.start === key(date) || index === 0;
+  const endsHere = mainPeriod.end === key(date) || index === 6;
+  cell.classList.add('has-period');
+  if (startsHere) cell.classList.add('period-start');
+  if (endsHere) cell.classList.add('period-end');
+  cell.style.setProperty('--period-color', type.color);
+  cell.title = datePeriods.map(period => period.title).join(', ');
+  if (startsHere) {
+    const label = document.createElement('span');
+    label.textContent = mainPeriod.title;
+    cell.appendChild(label);
+  }
+  return cell;
+}
+
+function renderWeekDesktop(dates) {
+  const root = $('#weekDesktop');
+  root.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'week-timetable';
+
+  const corner = document.createElement('div');
+  corner.className = 'week-corner';
+  corner.textContent = 'Hora';
+  grid.appendChild(corner);
+  dates.forEach(date => grid.appendChild(createWeekHeader(date, 'week-column-head')));
+
+  const periodLabel = document.createElement('div');
+  periodLabel.className = 'week-period-label';
+  periodLabel.textContent = 'Períodos';
+  grid.appendChild(periodLabel);
+  dates.forEach((date, index) => grid.appendChild(createWeekPeriodCell(date, index)));
+
+  const now = new Date();
+  DAY_HOURS.forEach(hour => {
+    const time = document.createElement('div');
+    time.className = 'week-time';
+    time.textContent = `${String(hour).padStart(2, '0')}:00`;
+    grid.appendChild(time);
+
+    dates.forEach(date => {
+      const data = getData(date);
+      const slot = document.createElement('div');
+      slot.className = `week-slot${date.getDay() === 0 || date.getDay() === 6 ? ' is-weekend' : ''}${sameDay(date, now) && now.getHours() === hour ? ' is-current' : ''}`;
+      slot.appendChild(createWeekScheduleInput(date, hour));
+      tasksAtHour(data, hour).forEach(task => slot.appendChild(createWeekTaskChip(task, date)));
+      grid.appendChild(slot);
+    });
+  });
+  root.appendChild(grid);
+
+  const taskSection = document.createElement('section');
+  taskSection.className = 'week-unscheduled';
+  taskSection.innerHTML = '<div class="section-title">Tarefas sem hora ou fora do horário</div>';
+  const taskGrid = document.createElement('div');
+  taskGrid.className = 'week-unscheduled-grid';
+  dates.forEach(date => {
+    const day = document.createElement('article');
+    const heading = createWeekHeader(date, 'week-task-day');
+    const tasks = tasksOutsideWeekGrid(getData(date));
+    day.appendChild(heading);
+    if (tasks.length) tasks.forEach(task => day.appendChild(createWeekTaskChip(task, date, true)));
+    else {
+      const empty = document.createElement('p');
+      empty.textContent = 'Sem tarefas';
+      day.appendChild(empty);
+    }
+    taskGrid.appendChild(day);
+  });
+  taskSection.appendChild(taskGrid);
+  root.appendChild(taskSection);
+}
+
+function renderWeekMobile(start, dates) {
+  const root = $('#weekMobile');
   root.innerHTML = '';
 
-  for (let index = 0; index < 7; index += 1) {
-    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12);
-    const data = getData(date);
-    const datePeriods = periodsForDate(date);
-    const mainPeriod = datePeriods[0];
-    const card = document.createElement('article');
-    card.className = `week-day${sameDay(date, new Date()) ? ' is-today' : ''}${mainPeriod ? ' has-period' : ''}`;
-    if (mainPeriod) {
-      const type = PERIOD_TYPES[mainPeriod.type] || PERIOD_TYPES.personal;
-      card.style.setProperty('--period-color', type.color);
-    }
+  const picker = document.createElement('div');
+  picker.className = 'week-mobile-picker';
+  dates.forEach((date, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `${index === mobileWeekDayIndex ? 'active' : ''}${sameDay(date, new Date()) ? ' is-today' : ''}`;
+    button.innerHTML = `<span>${WEEK_SHORT[date.getDay()].slice(0, 1)}</span><strong>${date.getDate()}</strong>`;
+    button.setAttribute('aria-label', `${WEEK[date.getDay()]} ${date.getDate()} de ${MONTHS[date.getMonth()]}`);
+    button.onclick = () => {
+      mobileWeekDayIndex = index;
+      renderWeekMobile(start, dates);
+    };
+    picker.appendChild(button);
+  });
+  root.appendChild(picker);
 
-    const periodHtml = datePeriods
-      .map(period => `<div class="week-period">${escapeHtml(period.title)}</div>`)
-      .join('');
-    const agenda = scheduleEntries(data);
-    const tasks = data?.tasks?.filter(task => task.text?.trim()) || [];
-    const weekItems = [
-      ...agenda.map(entry => ({...entry, done: false})),
-      ...tasks.map(task => ({time: task.time || '', text: task.text, done: task.done}))
-    ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99')).slice(0, 4);
-    const tasksHtml = weekItems.length
-      ? `<ul>${weekItems.map(task => `<li${task.done ? ' class="done"' : ''}>${task.time ? `<time>${escapeHtml(task.time)}</time>` : ''}${escapeHtml(task.text)}</li>`).join('')}</ul>`
-      : '<p class="week-empty">Sem tarefas</p>';
+  const date = dates[mobileWeekDayIndex];
+  const data = getData(date);
+  const panel = document.createElement('section');
+  panel.className = 'week-mobile-panel';
+  panel.appendChild(createWeekHeader(date, 'week-mobile-head'));
 
-    card.innerHTML = `<button type="button" class="week-day-open" aria-label="Abrir ${date.getDate()} de ${MONTHS[date.getMonth()]}"><span>${WEEK[date.getDay()]}</span><strong>${date.getDate()}</strong><small>${MONTHS[date.getMonth()]}</small></button>${periodHtml}${tasksHtml}`;
-    card.querySelector('.week-day-open').onclick = () => openDay(date);
-    root.appendChild(card);
+  const datePeriods = periodsForDate(date);
+  if (datePeriods.length) {
+    const periodRoot = document.createElement('div');
+    periodRoot.className = 'week-mobile-periods';
+    datePeriods.forEach(period => {
+      const type = PERIOD_TYPES[period.type] || PERIOD_TYPES.personal;
+      const badge = document.createElement('div');
+      badge.style.setProperty('--period-color', type.color);
+      badge.textContent = period.title;
+      periodRoot.appendChild(badge);
+    });
+    panel.appendChild(periodRoot);
   }
+
+  const schedule = document.createElement('div');
+  schedule.className = 'week-mobile-schedule';
+  const now = new Date();
+  DAY_HOURS.forEach(hour => {
+    const row = document.createElement('div');
+    row.className = `week-mobile-row${sameDay(date, now) && now.getHours() === hour ? ' is-current' : ''}`;
+    const time = document.createElement('span');
+    time.textContent = `${String(hour).padStart(2, '0')}:00`;
+    const content = document.createElement('div');
+    content.appendChild(createWeekScheduleInput(date, hour));
+    tasksAtHour(data, hour).forEach(task => content.appendChild(createWeekTaskChip(task, date)));
+    row.append(time, content);
+    schedule.appendChild(row);
+  });
+  panel.appendChild(schedule);
+
+  const remaining = tasksOutsideWeekGrid(data);
+  const taskSection = document.createElement('section');
+  taskSection.className = 'week-mobile-tasks';
+  taskSection.innerHTML = '<div class="section-title">Tarefas sem hora ou fora do horário</div>';
+  if (remaining.length) remaining.forEach(task => taskSection.appendChild(createWeekTaskChip(task, date, true)));
+  else {
+    const empty = document.createElement('p');
+    empty.textContent = 'Sem tarefas';
+    taskSection.appendChild(empty);
+  }
+  panel.appendChild(taskSection);
+  root.appendChild(panel);
+}
+
+function renderWeek() {
+  const start = startOfWeek(weekCursor);
+  const dates = weekDates(start);
+  const end = dates.at(-1);
+  $('#weekTitle').textContent = weekDateLabel(start, end);
+  renderWeekDesktop(dates);
+  renderWeekMobile(start, dates);
 }
 
 $('#prevWeek').onclick = () => {
