@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f3efe5">
   <title>Pajó Agenda</title>
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <header class="topbar">
@@ -41,12 +41,28 @@
       <div id="dayPeriods" class="day-periods" aria-label="Períodos deste dia"></div>
 
       <div class="paper">
-        <div class="section-title">Compromissos e tarefas</div>
-        <div id="tasks" class="tasks"></div>
-        <button id="addTask" class="add">+ Adicionar tarefa</button>
+        <div class="day-layout">
+          <section class="day-agenda" aria-labelledby="dayAgendaTitle">
+            <div id="dayAgendaTitle" class="section-title day-agenda-title">
+              <span>Agenda do dia</span>
+              <small>06h — 22h</small>
+            </div>
+            <div id="daySchedule" class="day-schedule"></div>
+          </section>
 
-        <div class="section-title notes-title">Notas do dia</div>
-        <textarea id="notes" class="lined-paper" placeholder="Escreve aqui..."></textarea>
+          <div class="day-writing">
+            <section aria-labelledby="tasksTitle">
+              <div id="tasksTitle" class="section-title">Compromissos e tarefas</div>
+              <div id="tasks" class="tasks"></div>
+              <button id="addTask" class="add">+ Adicionar tarefa</button>
+            </section>
+
+            <section class="notes-section" aria-labelledby="notesTitle">
+              <div id="notesTitle" class="section-title notes-title">Notas do dia</div>
+              <textarea id="notes" class="lined-paper" placeholder="Escreve aqui..."></textarea>
+            </section>
+          </div>
+        </div>
         <div id="saveState" class="save-state">Guardado automaticamente</div>
       </div>
     </section>
@@ -158,6 +174,6 @@
   </dialog>
 
   <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
