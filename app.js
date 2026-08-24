@@ -16,7 +16,11 @@ let yearCursor = selected.getFullYear();
 let plannerCursor = selected.getFullYear();
 let utilitiesInitialized = false;
 let organizerInitialized = false;
+let notebookInitialized = false;
 let habitCursor = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
+let goalYearCursor = selected.getFullYear();
+let planMonthCursor = new Date(selected.getFullYear(), selected.getMonth(), 1, 12);
+let mealWeekCursor = startOfWeek(selected);
 
 function startOfWeek(date) {
   const offset = (date.getDay() + 6) % 7;
@@ -51,6 +55,13 @@ organizer.habits ??= [];
 organizer.habitChecks ??= {};
 organizer.contacts ??= [];
 organizer.information ??= [];
+organizer.goals ??= [];
+organizer.monthlyPlans ??= {};
+organizer.checklists ??= [];
+organizer.freeNotes ??= [];
+organizer.mealPlans ??= {};
+organizer.shoppingLists ??= {};
+organizer.maintenance ??= [];
 
 let ukHolidayCache = readStoredObject(UK_HOLIDAY_CACHE_KEY, {events: [], updatedAt: ''});
 
@@ -406,6 +417,16 @@ function masterTasksForDate(date) {
   return organizer.masterTasks.filter(task => task.date === dateKey);
 }
 
+function maintenanceForDate(date) {
+  const dateKey = key(date);
+  return organizer.maintenance.filter(item => {
+    if (!item.date || dateKey < item.date) return false;
+    if (item.repeat === 'yearly') return item.date.slice(5) === dateKey.slice(5);
+    if (item.repeat === 'monthly') return Number(item.date.slice(8, 10)) === date.getDate();
+    return item.date === dateKey;
+  });
+}
+
 function calendarEventsForDate(date) {
   const holidayEvents = holidaysForDate(date).map(event => ({
     ...event, kind: 'holiday', color: event.country === 'UK' ? '#315d8c' : '#2f7d5c', label: `${event.country} · ${event.title}`
@@ -416,7 +437,13 @@ function calendarEventsForDate(date) {
   const taskEvents = masterTasksForDate(date).map(item => ({
     ...item, kind: 'master-task', color: categoryDetails(item.category).color, label: `${item.done ? '✓ ' : ''}${item.text}`
   }));
-  return [...importantEvents, ...taskEvents, ...holidayEvents];
+  const maintenanceEvents = maintenanceForDate(date).map(item => ({
+    ...item,
+    kind: 'maintenance',
+    color: item.area === 'car' ? '#315d8c' : item.area === 'home' ? '#a96535' : '#6d5d8f',
+    label: `${item.area === 'car' ? 'Carro' : item.area === 'home' ? 'Casa' : 'Documentos'} · ${item.title}`
+  }));
+  return [...importantEvents, ...taskEvents, ...maintenanceEvents, ...holidayEvents];
 }
 
 function refreshVisibleCalendar() {
@@ -547,7 +574,9 @@ function renderDayPeriods(date) {
       ? 'Feriado'
       : event.kind === 'master-task'
         ? `${categoryDetails(event.category).label} · tarefa geral`
-        : `${categoryDetails(event.category).label} · ${event.repeat === 'yearly' ? 'repete todos os anos' : 'data importante'}`;
+        : event.kind === 'maintenance'
+          ? `${event.repeat === 'monthly' ? 'Repete todos os meses' : event.repeat === 'yearly' ? 'Repete todos os anos' : 'Manutenção ou renovação'}`
+          : `${categoryDetails(event.category).label} · ${event.repeat === 'yearly' ? 'repete todos os anos' : 'data importante'}`;
     badge.innerHTML = `<strong>${escapeHtml(event.label)}</strong><span>${escapeHtml(detail)}</span>`;
     root.appendChild(badge);
   });
@@ -621,6 +650,7 @@ function show(name) {
   if (name === 'year') renderYear();
   if (name === 'planner') renderPlanner();
   if (name === 'organizer') renderOrganizer();
+  if (name === 'notebook') renderNotebook();
   if (name === 'utilities') renderUtilities();
 }
 
@@ -1398,6 +1428,32 @@ function searchAgenda(query) {
   organizer.information.forEach(item => {
     if (searchableText(`${item.label} ${item.value}`).includes(needle)) add('Informação', item.label, item.value);
   });
+  organizer.goals.forEach(goal => {
+    if (searchableText(goal.text).includes(needle)) add('Objetivo', goal.text, `${goal.year} · ${goal.progress || 0}%`);
+  });
+  Object.entries(organizer.monthlyPlans).forEach(([month, plan]) => {
+    const text = [plan.priorities, plan.goals, plan.notes].filter(Boolean).join(' · ');
+    if (searchableText(text).includes(needle)) add('Plano mensal', text.slice(0, 110), month);
+  });
+  organizer.checklists.forEach(list => {
+    const matchingItems = (list.items || []).filter(item => searchableText(item.text).includes(needle));
+    if (searchableText(list.title).includes(needle) || matchingItems.length) {
+      add('Checklist', list.title, matchingItems.map(item => item.text).join(' · ') || `${list.items.length} itens`);
+    }
+  });
+  organizer.freeNotes.forEach(note => {
+    if (searchableText(`${note.title} ${note.body}`).includes(needle)) add('Nota livre', note.title, note.body.slice(0, 110));
+  });
+  Object.entries(organizer.mealPlans).forEach(([date, meal]) => {
+    const text = [meal.lunch, meal.dinner].filter(Boolean).join(' · ');
+    if (searchableText(text).includes(needle)) add('Refeições', text, date, date);
+  });
+  Object.entries(organizer.shoppingLists).forEach(([date, text]) => {
+    if (searchableText(text).includes(needle)) add('Lista de compras', text.slice(0, 110), `Semana de ${date}`);
+  });
+  organizer.maintenance.forEach(item => {
+    if (searchableText(item.title).includes(needle)) add('Casa e carro', item.title, formatOrganizerDate(item.date), item.date);
+  });
   return results.slice(0, 100);
 }
 
@@ -1474,6 +1530,13 @@ async function importAgendaBackup(file) {
     organizer.habitChecks ??= {};
     organizer.contacts ??= [];
     organizer.information ??= [];
+    organizer.goals ??= [];
+    organizer.monthlyPlans ??= {};
+    organizer.checklists ??= [];
+    organizer.freeNotes ??= [];
+    organizer.mealPlans ??= {};
+    organizer.shoppingLists ??= {};
+    organizer.maintenance ??= [];
     ukHolidayCache = payload.ukHolidayCache || ukHolidayCache;
     localStorage.setItem(KEY, JSON.stringify(db));
     localStorage.setItem(PERIOD_KEY, JSON.stringify(periods));
@@ -1587,6 +1650,381 @@ function renderOrganizer() {
   renderContacts();
   renderInformation();
   renderSearchResults();
+}
+
+function showNotebookMessage(message) {
+  const root = $('#notebookMessage');
+  root.textContent = message;
+  clearTimeout(showNotebookMessage.timer);
+  showNotebookMessage.timer = setTimeout(() => { root.textContent = ''; }, 2600);
+}
+
+function renderGoals() {
+  $('#goalYearTitle').textContent = goalYearCursor;
+  const root = $('#goalList');
+  root.innerHTML = '';
+  const goals = organizer.goals.filter(goal => Number(goal.year) === goalYearCursor);
+  if (!goals.length) {
+    root.appendChild(createEmptyOrganizerMessage(`Ainda não existem objetivos para ${goalYearCursor}.`));
+    return;
+  }
+  goals.forEach(goal => {
+    const row = document.createElement('div');
+    row.className = `organizer-list-item goal-item${Number(goal.progress) === 100 ? ' done' : ''}`;
+    const content = document.createElement('div');
+    content.className = 'goal-content';
+    content.appendChild(createCategoryTag(goal.category));
+    const text = document.createElement('strong');
+    text.textContent = goal.text;
+    const progress = document.createElement('select');
+    progress.setAttribute('aria-label', `Progresso de ${goal.text}`);
+    progress.innerHTML = [0, 25, 50, 75, 100].map(value => `<option value="${value}">${value}%</option>`).join('');
+    progress.value = String(goal.progress || 0);
+    progress.onchange = () => {
+      goal.progress = Number(progress.value);
+      saveOrganizer();
+      renderGoals();
+    };
+    content.append(text, progress);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'organizer-delete';
+    remove.setAttribute('aria-label', `Apagar ${goal.text}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      if (!window.confirm(`Apagar o objetivo “${goal.text}”?`)) return;
+      organizer.goals = organizer.goals.filter(saved => saved.id !== goal.id);
+      saveOrganizer();
+      renderGoals();
+    };
+    row.append(content, remove);
+    root.appendChild(row);
+  });
+}
+
+function monthlyPlanKey() {
+  return `${planMonthCursor.getFullYear()}-${String(planMonthCursor.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function renderMonthlyPlan() {
+  $('#planMonthTitle').textContent = `${MONTHS[planMonthCursor.getMonth()]} ${planMonthCursor.getFullYear()}`;
+  const plan = organizer.monthlyPlans[monthlyPlanKey()] || {};
+  $('#monthlyPriorities').value = plan.priorities || '';
+  $('#monthlyGoals').value = plan.goals || '';
+  $('#monthlyNotes').value = plan.notes || '';
+}
+
+function saveMonthlyPlan() {
+  const planKey = monthlyPlanKey();
+  const plan = {
+    priorities: $('#monthlyPriorities').value,
+    goals: $('#monthlyGoals').value,
+    notes: $('#monthlyNotes').value
+  };
+  if (Object.values(plan).some(value => value.trim())) organizer.monthlyPlans[planKey] = plan;
+  else delete organizer.monthlyPlans[planKey];
+  saveOrganizer();
+}
+
+function renderChecklists() {
+  const root = $('#checklistGrid');
+  root.innerHTML = '';
+  if (!organizer.checklists.length) {
+    root.appendChild(createEmptyOrganizerMessage('Cria uma checklist para viagens, compras ou rotinas.'));
+    return;
+  }
+
+  organizer.checklists.forEach(list => {
+    list.items ??= [];
+    const sheet = document.createElement('section');
+    sheet.className = 'checklist-sheet';
+    const header = document.createElement('header');
+    header.innerHTML = `<strong>${escapeHtml(list.title)}</strong><span>${list.items.filter(item => item.done).length}/${list.items.length}</span>`;
+    const removeList = document.createElement('button');
+    removeList.type = 'button';
+    removeList.setAttribute('aria-label', `Apagar lista ${list.title}`);
+    removeList.textContent = '×';
+    removeList.onclick = () => {
+      if (!window.confirm(`Apagar a checklist “${list.title}”?`)) return;
+      organizer.checklists = organizer.checklists.filter(saved => saved.id !== list.id);
+      saveOrganizer();
+      renderChecklists();
+    };
+    header.appendChild(removeList);
+    sheet.appendChild(header);
+
+    const items = document.createElement('div');
+    items.className = 'checklist-items';
+    list.items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = item.done ? 'done' : '';
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = Boolean(item.done);
+      check.setAttribute('aria-label', `Concluir ${item.text}`);
+      check.onchange = () => {
+        item.done = check.checked;
+        saveOrganizer();
+        renderChecklists();
+      };
+      const text = document.createElement('input');
+      text.type = 'text';
+      text.maxLength = 100;
+      text.value = item.text;
+      text.setAttribute('aria-label', 'Item da checklist');
+      text.oninput = () => {
+        item.text = text.value;
+        saveOrganizer();
+      };
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', `Apagar ${item.text}`);
+      remove.textContent = '×';
+      remove.onclick = () => {
+        list.items = list.items.filter(saved => saved.id !== item.id);
+        saveOrganizer();
+        renderChecklists();
+      };
+      row.append(check, text, remove);
+      items.appendChild(row);
+    });
+    sheet.appendChild(items);
+
+    const addForm = document.createElement('form');
+    addForm.className = 'checklist-add-item';
+    addForm.innerHTML = '<input type="text" maxlength="100" placeholder="Novo item…" required><button type="submit">+</button>';
+    addForm.onsubmit = event => {
+      event.preventDefault();
+      const input = addForm.querySelector('input');
+      list.items.push({id: createId(), text: input.value.trim(), done: false});
+      saveOrganizer();
+      renderChecklists();
+    };
+    sheet.appendChild(addForm);
+    root.appendChild(sheet);
+  });
+}
+
+function renderFreeNotes() {
+  const root = $('#freeNoteList');
+  root.innerHTML = '';
+  if (!organizer.freeNotes.length) {
+    root.appendChild(createEmptyOrganizerMessage('Ainda não existem páginas de notas livres.'));
+    return;
+  }
+  [...organizer.freeNotes].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).forEach(note => {
+    const sheet = document.createElement('article');
+    sheet.className = 'free-note-sheet';
+    const head = document.createElement('div');
+    head.className = 'free-note-head';
+    head.appendChild(createCategoryTag(note.category));
+    const title = document.createElement('input');
+    title.type = 'text';
+    title.maxLength = 80;
+    title.value = note.title;
+    title.setAttribute('aria-label', 'Título da nota');
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.setAttribute('aria-label', `Apagar ${note.title}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      if (!window.confirm(`Apagar a nota “${note.title}”?`)) return;
+      organizer.freeNotes = organizer.freeNotes.filter(saved => saved.id !== note.id);
+      saveOrganizer();
+      renderFreeNotes();
+    };
+    head.append(title, remove);
+    const body = document.createElement('textarea');
+    body.maxLength = 3000;
+    body.value = note.body;
+    body.setAttribute('aria-label', `Conteúdo de ${note.title}`);
+    const update = () => {
+      note.title = title.value;
+      note.body = body.value;
+      note.updatedAt = new Date().toISOString();
+      saveOrganizer();
+    };
+    title.oninput = update;
+    body.oninput = update;
+    sheet.append(head, body);
+    root.appendChild(sheet);
+  });
+}
+
+function nextMaintenanceDate(item, reference = new Date()) {
+  const start = fromIso(item.date);
+  const today = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate(), 12);
+  if (item.repeat === 'none') return start;
+  if (item.repeat === 'yearly') {
+    let next = new Date(today.getFullYear(), start.getMonth(), start.getDate(), 12);
+    if (next < today || next < start) next = new Date(Math.max(today.getFullYear() + 1, start.getFullYear()), start.getMonth(), start.getDate(), 12);
+    return next;
+  }
+  for (let offset = 0; offset < 24; offset += 1) {
+    const candidate = new Date(today.getFullYear(), today.getMonth() + offset, start.getDate(), 12);
+    if (candidate.getDate() === start.getDate() && candidate >= today && candidate >= start) return candidate;
+  }
+  return start;
+}
+
+function renderMaintenance() {
+  const root = $('#maintenanceList');
+  root.innerHTML = '';
+  const repeatLabels = {none: 'Uma vez', monthly: 'Todos os meses', yearly: 'Todos os anos'};
+  const areaLabels = {car: 'Carro', home: 'Casa', documents: 'Documentos'};
+  const items = [...organizer.maintenance].sort((a, b) => nextMaintenanceDate(a) - nextMaintenanceDate(b));
+  if (!items.length) {
+    root.appendChild(createEmptyOrganizerMessage('Ainda não existem manutenções ou renovações.'));
+    return;
+  }
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'organizer-list-item maintenance-item';
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'organizer-item-main';
+    const nextDate = nextMaintenanceDate(item);
+    const color = item.area === 'car' ? '#315d8c' : item.area === 'home' ? '#a96535' : '#6d5d8f';
+    main.innerHTML = `<span class="maintenance-area" style="--category-color:${color}">${areaLabels[item.area] || 'Outro'}</span><strong>${escapeHtml(item.title)}</strong><span>${formatOrganizerDate(key(nextDate))} · ${repeatLabels[item.repeat]}</span>`;
+    main.onclick = () => openDay(nextDate);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'organizer-delete';
+    remove.setAttribute('aria-label', `Apagar ${item.title}`);
+    remove.textContent = '×';
+    remove.onclick = () => {
+      if (!window.confirm(`Apagar “${item.title}”?`)) return;
+      organizer.maintenance = organizer.maintenance.filter(saved => saved.id !== item.id);
+      saveOrganizer();
+      renderMaintenance();
+    };
+    row.append(main, remove);
+    root.appendChild(row);
+  });
+}
+
+function renderMealPlan() {
+  const start = startOfWeek(mealWeekCursor);
+  const dates = weekDates(start);
+  $('#mealWeekTitle').textContent = weekDateLabel(start, dates.at(-1));
+  const root = $('#mealPlan');
+  root.innerHTML = '';
+  dates.forEach(date => {
+    const dateKey = key(date);
+    const data = organizer.mealPlans[dateKey] || {};
+    const row = document.createElement('div');
+    row.className = 'meal-row';
+    const day = document.createElement('button');
+    day.type = 'button';
+    day.innerHTML = `<strong>${WEEK_SHORT[date.getDay()]}</strong><span>${date.getDate()} ${MONTHS_SHORT[date.getMonth()]}</span>`;
+    day.onclick = () => openDay(date);
+    const lunch = document.createElement('input');
+    lunch.type = 'text';
+    lunch.maxLength = 100;
+    lunch.value = data.lunch || '';
+    lunch.placeholder = 'Almoço';
+    lunch.setAttribute('aria-label', `Almoço de ${WEEK[date.getDay()]}`);
+    const dinner = document.createElement('input');
+    dinner.type = 'text';
+    dinner.maxLength = 100;
+    dinner.value = data.dinner || '';
+    dinner.placeholder = 'Jantar';
+    dinner.setAttribute('aria-label', `Jantar de ${WEEK[date.getDay()]}`);
+    const saveMeal = () => {
+      if (lunch.value.trim() || dinner.value.trim()) organizer.mealPlans[dateKey] = {lunch: lunch.value, dinner: dinner.value};
+      else delete organizer.mealPlans[dateKey];
+      saveOrganizer();
+    };
+    lunch.oninput = saveMeal;
+    dinner.oninput = saveMeal;
+    row.append(day, lunch, dinner);
+    root.appendChild(row);
+  });
+  $('#shoppingList').value = organizer.shoppingLists[key(start)] || '';
+}
+
+function initializeNotebook() {
+  if (notebookInitialized) return;
+  $('#goalCategory').innerHTML = categoryOptions();
+  $('#freeNoteCategory').innerHTML = categoryOptions();
+  $('#maintenanceDate').value = key(selected);
+
+  $('#goalForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.goals.push({id: createId(), text: $('#goalText').value.trim(), year: goalYearCursor, category: $('#goalCategory').value, progress: 0});
+    saveOrganizer();
+    event.target.reset();
+    renderGoals();
+    showNotebookMessage('Objetivo adicionado.');
+  };
+  $('#checklistForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.checklists.push({id: createId(), title: $('#checklistTitle').value.trim(), items: []});
+    saveOrganizer();
+    event.target.reset();
+    renderChecklists();
+    showNotebookMessage('Checklist criada.');
+  };
+  $('#freeNoteForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.freeNotes.push({
+      id: createId(), title: $('#freeNoteTitle').value.trim(), category: $('#freeNoteCategory').value,
+      body: $('#freeNoteBody').value.trim(), updatedAt: new Date().toISOString()
+    });
+    saveOrganizer();
+    event.target.reset();
+    renderFreeNotes();
+    showNotebookMessage('Nota guardada.');
+  };
+  $('#maintenanceForm').onsubmit = event => {
+    event.preventDefault();
+    organizer.maintenance.push({
+      id: createId(), title: $('#maintenanceTitle').value.trim(), area: $('#maintenanceArea').value,
+      date: $('#maintenanceDate').value, repeat: $('#maintenanceRepeat').value
+    });
+    saveOrganizer();
+    event.target.reset();
+    $('#maintenanceDate').value = key(selected);
+    renderMaintenance();
+    showNotebookMessage('Lembrete de manutenção adicionado.');
+  };
+
+  $('#prevGoalYear').onclick = () => { goalYearCursor -= 1; renderGoals(); };
+  $('#nextGoalYear').onclick = () => { goalYearCursor += 1; renderGoals(); };
+  $('#prevPlanMonth').onclick = () => {
+    planMonthCursor = new Date(planMonthCursor.getFullYear(), planMonthCursor.getMonth() - 1, 1, 12);
+    renderMonthlyPlan();
+  };
+  $('#nextPlanMonth').onclick = () => {
+    planMonthCursor = new Date(planMonthCursor.getFullYear(), planMonthCursor.getMonth() + 1, 1, 12);
+    renderMonthlyPlan();
+  };
+  ['monthlyPriorities', 'monthlyGoals', 'monthlyNotes'].forEach(id => { $(`#${id}`).oninput = saveMonthlyPlan; });
+  $('#prevMealWeek').onclick = () => {
+    mealWeekCursor = addCalendarDays(mealWeekCursor, -7);
+    renderMealPlan();
+  };
+  $('#nextMealWeek').onclick = () => {
+    mealWeekCursor = addCalendarDays(mealWeekCursor, 7);
+    renderMealPlan();
+  };
+  $('#shoppingList').oninput = () => {
+    const weekKey = key(startOfWeek(mealWeekCursor));
+    if ($('#shoppingList').value.trim()) organizer.shoppingLists[weekKey] = $('#shoppingList').value;
+    else delete organizer.shoppingLists[weekKey];
+    saveOrganizer();
+  };
+  notebookInitialized = true;
+}
+
+function renderNotebook() {
+  initializeNotebook();
+  renderGoals();
+  renderMonthlyPlan();
+  renderChecklists();
+  renderFreeNotes();
+  renderMaintenance();
+  renderMealPlan();
 }
 
 function formatUtilityNumber(value, maximumFractionDigits = 6) {
