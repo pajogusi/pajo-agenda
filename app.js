@@ -236,6 +236,31 @@ $('#todayBtn').onclick = () => {
   show('day');
 };
 
+function preparePrintView() {
+  const activeView = document.querySelector('.view.active');
+  document.body.dataset.printView = activeView?.id?.replace('View', '') || 'day';
+  const notes = $('#notes');
+  if (notes && notes.dataset.printHeight === undefined) {
+    notes.dataset.printHeight = notes.style.height;
+    notes.style.height = `${Math.max(notes.scrollHeight, 300)}px`;
+  }
+}
+
+$('#printBtn').onclick = () => {
+  preparePrintView();
+  window.print();
+};
+
+window.addEventListener('beforeprint', preparePrintView);
+window.addEventListener('afterprint', () => {
+  delete document.body.dataset.printView;
+  const notes = $('#notes');
+  if (notes?.dataset.printHeight !== undefined) {
+    notes.style.height = notes.dataset.printHeight;
+    delete notes.dataset.printHeight;
+  }
+});
+
 function show(name) {
   document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === name));
