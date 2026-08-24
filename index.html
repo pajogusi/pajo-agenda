@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#f3efe5">
   <title>Pajó Agenda</title>
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
   <header class="topbar">
@@ -73,7 +73,19 @@
         <h2 id="weekTitle"></h2>
         <button id="nextWeek" aria-label="Semana seguinte">›</button>
       </div>
-      <div id="weekGrid" class="week-grid"></div>
+      <div class="week-paper">
+        <div class="week-heading">
+          <div>
+            <span class="eyebrow planner-eyebrow">PLANEAMENTO</span>
+            <h3>Agenda semanal</h3>
+          </div>
+          <span>06h — 22h</span>
+        </div>
+
+        <div id="weekDesktop" class="week-desktop" aria-label="Agenda semanal completa"></div>
+        <div id="weekMobile" class="week-mobile" aria-label="Agenda semanal por dia"></div>
+        <div id="weekSaveState" class="save-state">Guardado automaticamente</div>
+      </div>
     </section>
 
     <section id="monthView" class="view">
@@ -174,6 +186,6 @@
   </dialog>
 
   <footer>Os dados desta versão ficam guardados apenas neste browser.</footer>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
