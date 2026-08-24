@@ -6,6 +6,7 @@ const MONTHS = [
 ];
 const MONTHS_SHORT = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 const WEEK = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+const DAY_HOURS = Array.from({length: 17}, (_, index) => index + 6);
 
 let selected = new Date();
 selected.setHours(12, 0, 0, 0);
@@ -33,7 +34,14 @@ const PERIOD_TYPES = {
 };
 
 const key = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-const dayData = date => db[key(date)] || (db[key(date)] = {notes: '', tasks: []});
+const dayData = date => {
+  const dateKey = key(date);
+  const data = db[dateKey] || (db[dateKey] = {notes: '', tasks: [], schedule: {}});
+  data.notes ??= '';
+  data.tasks ??= [];
+  data.schedule ??= {};
+  return data;
+};
 
 function save() {
   localStorage.setItem(KEY, JSON.stringify(db));
@@ -64,7 +72,17 @@ function getData(date) {
 
 function hasData(date) {
   const data = getData(date);
-  return Boolean(data && (data.notes?.trim() || data.tasks?.some(task => task.text?.trim())));
+  return Boolean(data && (
+    data.notes?.trim()
+    || data.tasks?.some(task => task.text?.trim())
+    || Object.values(data.schedule || {}).some(entry => entry?.trim())
+  ));
+}
+
+function scheduleEntries(data) {
+  return DAY_HOURS
+    .map(hour => ({time: `${String(hour).padStart(2, '0')}:00`, text: data?.schedule?.[hour]?.trim() || ''}))
+    .filter(entry => entry.text);
 }
 
 function sameDay(a, b) {
@@ -98,6 +116,7 @@ function renderDay() {
   $('#dayMonthYear').textContent = `${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
   $('#notes').value = data.notes || '';
   renderDayPeriods(date);
+  renderDaySchedule(date, data);
 
   const root = $('#tasks');
   root.innerHTML = '';
@@ -126,6 +145,39 @@ function renderDay() {
       save();
       renderDay();
     };
+    root.appendChild(row);
+  });
+}
+
+function renderDaySchedule(date, data) {
+  const root = $('#daySchedule');
+  const now = new Date();
+  root.innerHTML = '';
+
+  DAY_HOURS.forEach(hour => {
+    const row = document.createElement('label');
+    const isCurrentHour = sameDay(date, now) && now.getHours() === hour;
+    row.className = `schedule-row${isCurrentHour ? ' is-current' : ''}`;
+
+    const time = document.createElement('span');
+    time.className = 'schedule-time';
+    time.textContent = `${String(hour).padStart(2, '0')}:00`;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 100;
+    input.value = data.schedule[hour] || '';
+    input.placeholder = 'Compromisso ou atividade';
+    input.setAttribute('aria-label', `Agenda das ${time.textContent}`);
+    input.oninput = () => {
+      const value = input.value;
+      if (value.trim()) data.schedule[hour] = value;
+      else delete data.schedule[hour];
+      $('#saveState').textContent = 'A guardar…';
+      save();
+    };
+
+    row.append(time, input);
     root.appendChild(row);
   });
 }
@@ -220,9 +272,14 @@ function renderWeek() {
     const periodHtml = datePeriods
       .map(period => `<div class="week-period">${escapeHtml(period.title)}</div>`)
       .join('');
-    const tasks = data?.tasks?.filter(task => task.text?.trim()).slice(0, 3) || [];
-    const tasksHtml = tasks.length
-      ? `<ul>${tasks.map(task => `<li${task.done ? ' class="done"' : ''}>${task.time ? `<time>${escapeHtml(task.time)}</time>` : ''}${escapeHtml(task.text)}</li>`).join('')}</ul>`
+    const agenda = scheduleEntries(data);
+    const tasks = data?.tasks?.filter(task => task.text?.trim()) || [];
+    const weekItems = [
+      ...agenda.map(entry => ({...entry, done: false})),
+      ...tasks.map(task => ({time: task.time || '', text: task.text, done: task.done}))
+    ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99')).slice(0, 4);
+    const tasksHtml = weekItems.length
+      ? `<ul>${weekItems.map(task => `<li${task.done ? ' class="done"' : ''}>${task.time ? `<time>${escapeHtml(task.time)}</time>` : ''}${escapeHtml(task.text)}</li>`).join('')}</ul>`
       : '<p class="week-empty">Sem tarefas</p>';
 
     card.innerHTML = `<button type="button" class="week-day-open" aria-label="Abrir ${date.getDate()} de ${MONTHS[date.getMonth()]}"><span>${WEEK[date.getDay()]}</span><strong>${date.getDate()}</strong><small>${MONTHS[date.getMonth()]}</small></button>${periodHtml}${tasksHtml}`;
@@ -323,7 +380,9 @@ function plannerCellTitle(date, data) {
 
   const details = [];
   const tasks = data.tasks?.filter(task => task.text?.trim()) || [];
+  const agenda = scheduleEntries(data);
   if (tasks.length) details.push(`${tasks.length} tarefa${tasks.length === 1 ? '' : 's'}`);
+  if (agenda.length) details.push(`${agenda.length} registo${agenda.length === 1 ? '' : 's'} na agenda`);
   if (data.notes?.trim()) details.push('notas');
   return details.length ? `${label} — ${details.join(' e ')}` : label;
 }
@@ -405,7 +464,10 @@ function renderPlanner() {
       const date = new Date(plannerCursor, month, day, 12);
       const data = getData(date);
       const button = document.createElement('button');
-      const hasTasks = Boolean(data?.tasks?.some(task => task.text?.trim()));
+      const hasTasks = Boolean(
+        data?.tasks?.some(task => task.text?.trim())
+        || Object.values(data?.schedule || {}).some(entry => entry?.trim())
+      );
       const hasNotes = Boolean(data?.notes?.trim());
       const datePeriods = periodsForDate(date);
       const mainPeriod = datePeriods[0];
