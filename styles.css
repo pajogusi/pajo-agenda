@@ -33,6 +33,17 @@ button { font: inherit; }
   margin: 2px 0;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#printBtn {
+  border-color: #b98282;
+  background: var(--accent);
+}
+
 .eyebrow {
   font: 700 .7rem Arial, sans-serif;
   letter-spacing: .25em;
@@ -1170,13 +1181,121 @@ footer {
   .day-period-badge { align-items: flex-start; flex-direction: column; }
 }
 
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
 @media print {
-  .topbar, .tabs, .navigator, footer, .planner-help { display: none !important; }
-  main { max-width: none; padding: 0; }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  :root,
+  body {
+    background: white;
+    color: #171511;
+  }
+
+  .topbar,
+  .tabs,
+  footer,
+  .navigator button,
+  .day-head button,
+  .add,
+  .delete,
+  .planner-add,
+  .period-delete,
+  .save-state,
+  .planner-help { display: none !important; }
+
+  main {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  main::before {
+    content: 'PAJÓ  ·  AGENDA DIGITAL';
+    display: block;
+    margin-bottom: 5mm;
+    border-bottom: 1px solid #777;
+    padding-bottom: 2mm;
+    font: 700 8pt Arial, sans-serif;
+    letter-spacing: .18em;
+  }
+
   .view { display: none !important; }
-  #plannerView { display: block !important; }
-  .planner-paper { border: 0; box-shadow: none; padding: 0; }
+  .view.active { display: block !important; }
+
+  .navigator {
+    display: block;
+    margin: 0 0 4mm;
+    text-align: center;
+  }
+
+  .navigator h2 { font-size: 15pt; }
+
+  .paper,
+  .planner-paper,
+  .week-paper,
+  .mini-month {
+    border-color: #777;
+    background: white;
+    box-shadow: none;
+  }
+
+  input,
+  textarea { color: #111 !important; }
+
+  .day-head {
+    display: block;
+    margin-bottom: 3mm;
+  }
+
+  .date-line strong { font-size: 28pt; }
+  .date-line span { font-size: 11pt; }
+  .day-periods { margin-bottom: 3mm; }
+  .paper { min-height: 0; padding: 5mm; }
+  .day-layout { grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .schedule-row { min-height: 8mm; }
+  .schedule-row input { font-size: 9pt; }
+  .tasks { min-height: 35mm; }
+  .task-row { min-height: 8mm; }
+  .lined-paper { min-height: 80mm; resize: none; }
+
+  .week-paper { padding: 4mm; }
+  .week-heading { margin-bottom: 3mm; }
+  .week-desktop { display: block !important; }
+  .week-mobile { display: none !important; }
+  .week-corner,
+  .week-column-head { position: static; min-height: 11mm; }
+  .week-period-label,
+  .week-period-cell { min-height: 6mm; }
+  .week-time,
+  .week-slot { min-height: 6.5mm; }
+  .week-slot { padding: 1px; }
+  .week-slot-input { padding: 1px 2px; font-size: 6.5pt; }
+  .week-task-chip { margin-top: 1px; padding: 1px 2px; font-size: 5.5pt; }
+  .week-unscheduled { margin-top: 3mm; break-inside: avoid; }
+  .week-unscheduled-grid article { min-height: 14mm; padding: 2px; }
+
+  .day-cell { min-height: 17mm; }
+  .month-grid { border-color: #777; }
+  .year-grid { grid-template-columns: repeat(4, 1fr); gap: 3mm; }
+  .mini-month { break-inside: avoid; padding: 2.5mm; }
+  .mini-month h3 { margin-bottom: 1.5mm; font-size: 8pt; }
+  .mini-grid { font-size: 7pt; }
+
+  .planner-paper { padding: 0; }
+  .planner-heading { padding-bottom: 2mm; }
   .planner-wrap { overflow: visible; border: 1px solid #555; }
   .planner-table { min-width: 0; }
-  .planner-table .month-heading, .planner-month { position: static; }
+  .planner-table .month-heading,
+  .planner-month { position: static; }
+  .planner-table th,
+  .planner-table td { height: 7mm; }
+  .planner-day { min-height: 7mm; }
+  .periods-section { margin-top: 3mm; padding-top: 2mm; break-inside: avoid; }
 }
